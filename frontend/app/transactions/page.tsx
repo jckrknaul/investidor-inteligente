@@ -286,6 +286,11 @@ export default function TransactionsPage() {
                 required
                 value={form.ticker}
                 onChange={v => { field('ticker', v); setPriceMsg(''); lastFetchedRef.current = '' }}
+                onSelect={r => {
+                  const isFii = ['fund', 'mutualfund', 'etf'].includes(r.type) || /\d{2}$/.test(r.ticker)
+                  const cls = isFii ? 'FII' : r.type === 'cryptocurrency' ? 'CRYPTO' : 'STOCK'
+                  setForm(f => ({ ...f, ticker: r.ticker, assetClass: cls }))
+                }}
                 assetClass={form.assetClass}
                 disabled={!!editingId}
               />

@@ -13,6 +13,7 @@ interface TickerResult {
 interface TickerInputProps {
   value: string
   onChange: (ticker: string) => void
+  onSelect?: (result: TickerResult) => void
   assetClass?: string
   disabled?: boolean
   required?: boolean
@@ -32,7 +33,7 @@ function filterByClass(results: TickerResult[], assetClass?: string): TickerResu
   }
 }
 
-export function TickerInput({ value, onChange, assetClass, disabled, required, placeholder = 'Ex: PETR4' }: TickerInputProps) {
+export function TickerInput({ value, onChange, onSelect, assetClass, disabled, required, placeholder = 'Ex: PETR4' }: TickerInputProps) {
   const [query, setQuery] = useState(value)
   const [results, setResults] = useState<TickerResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -81,6 +82,7 @@ export function TickerInput({ value, onChange, assetClass, disabled, required, p
   const select = (r: TickerResult) => {
     setQuery(r.ticker)
     onChange(r.ticker)
+    onSelect?.(r)
     setOpen(false)
     setResults([])
   }
