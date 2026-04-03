@@ -2,37 +2,17 @@
 import { useEffect, useState } from 'react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { Card } from '@/components/ui/Card'
-import { Modal } from '@/components/ui/Modal'
 import { AssetClassBadge } from '@/components/ui/Badge'
 import { dividendsApi } from '@/lib/api'
-import { formatCurrency, formatDate, ASSET_CLASS_LABELS, DIVIDEND_TYPE_LABELS } from '@/lib/formatters'
+import { formatCurrency, formatDate, DIVIDEND_TYPE_LABELS } from '@/lib/formatters'
 import { AssetLogo } from '@/components/ui/AssetLogo'
-import { Plus, RefreshCw, Trash2, TrendingUp } from 'lucide-react'
-
-const ASSET_CLASSES = ['FII', 'STOCK', 'FIXED_INCOME', 'TREASURY', 'CRYPTO'] as const
-const DIVIDEND_TYPES = ['DIVIDEND', 'JCP', 'INCOME', 'AMORTIZATION', 'SUBSCRIPTION'] as const
-
-const EMPTY_FORM = {
-  ticker: '',
-  assetClass: 'STOCK' as string,
-  type: 'DIVIDEND' as string,
-  exDate: new Date().toISOString().slice(0, 10),
-  payDate: new Date().toISOString().slice(0, 10),
-  valuePerUnit: '',
-  quantity: '',
-  notes: '',
-}
+import { RefreshCw, TrendingUp } from 'lucide-react'
 
 export default function DividendsPage() {
   const [dividends, setDividends] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [open, setOpen] = useState(false)
-  const [form, setForm] = useState(EMPTY_FORM)
-  const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
-  const [error, setError] = useState('')
-
   const [walletId, setWalletId] = useState('')
 
   useEffect(() => {
@@ -70,32 +50,6 @@ export default function DividendsPage() {
       .reduce((s, d) => s + Number(d.totalValue), 0)
   })()
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setSaving(true)
-    try {
-      await dividendsApi.create(walletId, {
-        ...form,
-        valuePerUnit: Number(form.valuePerUnit),
-        quantity: Number(form.quantity),
-      })
-      setOpen(false)
-      setForm(EMPTY_FORM)
-      await load()
-    } catch (err: any) {
-      setError(err.response?.data?.message ?? 'Erro ao salvar provento')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Remover este provento?')) return
-    await dividendsApi.remove(id)
-    await load()
-  }
-
   const handleSync = async () => {
     setSyncing(true)
     setSyncMsg('')
@@ -103,7 +57,7 @@ export default function DividendsPage() {
       const result = await dividendsApi.sync(walletId)
       setSyncMsg(
         result.inserted > 0
-          ? `${result.inserted} provento(s) importado(s) de: ${result.tickers.join(', ')}`
+          ? `${result.inserted} provento(s) importado(s).`
           : 'Nenhum provento novo encontrado.'
       )
       if (result.inserted > 0) await load()
@@ -114,9 +68,6 @@ export default function DividendsPage() {
     }
   }
 
-  const field = (key: keyof typeof EMPTY_FORM, value: string) =>
-    setForm(f => ({ ...f, [key]: value }))
-
   return (
     <AppLayout>
       <div className="flex items-center justify-between mb-6">
@@ -124,23 +75,14 @@ export default function DividendsPage() {
           <h1 className="text-xl font-bold text-text-primary">Proventos</h1>
           <p className="text-text-secondary text-sm mt-0.5">Dividendos, JCP e rendimentos recebidos</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="flex items-center gap-2 bg-bg-secondary hover:bg-bg-hover border border-border text-text-secondary hover:text-text-primary text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
-          >
-            <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
-            {syncing ? 'Sincronizando...' : 'Sincronizar'}
-          </button>
-          <button
-            onClick={() => setOpen(true)}
-            className="flex items-center gap-2 bg-accent hover:bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
-            <Plus size={16} />
-            Adicionar Provento
-          </button>
-        </div>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="flex items-center gap-2 bg-bg-secondary hover:bg-bg-hover border border-border text-text-secondary hover:text-text-primary text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+        >
+          <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+          {syncing ? 'Sincronizando...' : 'Sincronizar'}
+        </button>
       </div>
 
       {syncMsg && (
@@ -149,7 +91,6 @@ export default function DividendsPage() {
         </div>
       )}
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <Card>
           <div className="flex items-center gap-3">
@@ -193,9 +134,9 @@ export default function DividendsPage() {
           </div>
         ) : dividends.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 text-text-muted text-sm gap-2">
-            <p>Nenhum provento registrado.</p>
-            <button onClick={() => setOpen(true)} className="text-accent hover:underline">
-              Adicionar primeiro provento
+            <p>Nenhum provento encontrado.</p>
+            <button onClick={handleSync} className="text-accent hover:underline">
+              Sincronizar agora
             </button>
           </div>
         ) : (
@@ -209,12 +150,12 @@ export default function DividendsPage() {
                 <th className="px-4 py-3 text-right">Val/Cota</th>
                 <th className="px-4 py-3 text-right">Qtd</th>
                 <th className="px-4 py-3 text-right">Total</th>
-                <th className="px-4 py-3" />
+                <th className="px-4 py-3 text-right">Status</th>
               </tr>
             </thead>
             <tbody>
               {dividends.map((d: any) => {
-                const received = new Date(d.payDate) <= new Date()
+                const received = new Date(d.payDate) <= now
                 return (
                   <tr key={d.id} className="border-t border-border hover:bg-bg-hover transition-colors">
                     <td className="px-4 py-3">
@@ -239,17 +180,9 @@ export default function DividendsPage() {
                       {formatCurrency(Number(d.totalValue))}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${received ? 'bg-green-500/15 text-green-400' : 'bg-yellow-500/15 text-yellow-400'}`}>
-                          {received ? 'Recebido' : 'A receber'}
-                        </span>
-                        <button
-                          onClick={() => handleDelete(d.id)}
-                          className="text-text-muted hover:text-red-400 transition-colors"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${received ? 'bg-green-500/15 text-green-400' : 'bg-yellow-500/15 text-yellow-400'}`}>
+                        {received ? 'Recebido' : 'A receber'}
+                      </span>
                     </td>
                   </tr>
                 )
@@ -258,126 +191,6 @@ export default function DividendsPage() {
           </table>
         )}
       </Card>
-
-      <Modal open={open} onClose={() => setOpen(false)} title="Adicionar Provento">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Ticker</label>
-              <input
-                required
-                value={form.ticker}
-                onChange={e => field('ticker', e.target.value.toUpperCase())}
-                placeholder="Ex: HGLG11"
-                className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Classe</label>
-              <select
-                value={form.assetClass}
-                onChange={e => field('assetClass', e.target.value)}
-                className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
-              >
-                {ASSET_CLASSES.map(c => (
-                  <option key={c} value={c}>{ASSET_CLASS_LABELS[c]}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Tipo de Provento</label>
-            <select
-              value={form.type}
-              onChange={e => field('type', e.target.value)}
-              className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
-            >
-              {DIVIDEND_TYPES.map(t => (
-                <option key={t} value={t}>{DIVIDEND_TYPE_LABELS[t]}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Data COM</label>
-              <input
-                type="date"
-                required
-                value={form.exDate}
-                onChange={e => field('exDate', e.target.value)}
-                className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Data Pagamento</label>
-              <input
-                type="date"
-                required
-                value={form.payDate}
-                onChange={e => field('payDate', e.target.value)}
-                className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Valor por Cota (R$)</label>
-              <input
-                type="number"
-                required
-                min="0.000001"
-                step="any"
-                value={form.valuePerUnit}
-                onChange={e => field('valuePerUnit', e.target.value)}
-                className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Quantidade (na data COM)</label>
-              <input
-                type="number"
-                required
-                min="1"
-                step="1"
-                value={form.quantity}
-                onChange={e => field('quantity', e.target.value)}
-                className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
-              />
-            </div>
-          </div>
-
-          {form.valuePerUnit && form.quantity && (
-            <div className="bg-bg-primary rounded-lg px-4 py-3 flex justify-between items-center">
-              <span className="text-text-secondary text-sm">Total calculado</span>
-              <span className="text-green-400 font-semibold">
-                {formatCurrency(Number(form.valuePerUnit) * Number(form.quantity))}
-              </span>
-            </div>
-          )}
-
-          {error && <p className="text-red-400 text-xs">{error}</p>}
-
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="flex-1 bg-bg-primary border border-border text-text-secondary hover:text-text-primary py-2 rounded-lg text-sm transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 bg-accent hover:bg-blue-600 text-white font-medium py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
-            >
-              {saving ? 'Salvando...' : 'Salvar'}
-            </button>
-          </div>
-        </form>
-      </Modal>
     </AppLayout>
   )
 }
