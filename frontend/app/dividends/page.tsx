@@ -209,7 +209,9 @@ export default function DividendsPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right text-text-secondary">{formatDate(d.exDate)}</td>
-                  <td className="px-4 py-3 text-right text-text-secondary">{formatDate(d.payDate)}</td>
+                  <td className="px-4 py-3 text-right text-text-secondary">
+                    {d.payDate && d.payDate.slice(0, 10) !== d.exDate.slice(0, 10) ? formatDate(d.payDate) : '—'}
+                  </td>
                   <td className="px-4 py-3 text-right text-text-primary">{formatCurrency(Number(d.valuePerUnit))}</td>
                   <td className="px-4 py-3 text-right text-text-secondary">{Number(d.quantity)}</td>
                   <td className="px-4 py-3 text-right font-semibold text-green-400">{formatCurrency(Number(d.totalValue))}</td>
