@@ -1,0 +1,11 @@
+{
+  "name": "carteira-investimentos",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "backend": "cd backend && npm run dev",
+    "frontend": "cd frontend && npm run dev",
+    "setup:db": "cd backend && npx prisma migrate dev --name init",
+    "db:studio": "cd backend && npx prisma studio"
+  }
+}

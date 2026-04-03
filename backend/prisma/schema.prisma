@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String       @id @default(cuid())
+  name         String
+  email        String       @unique
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  wallets      Wallet[]
+}
+
+model Wallet {
+  id           String        @id @default(cuid())
+  userId       String
+  name         String
+  createdAt    DateTime      @default(now())
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assets       Asset[]
+  transactions Transaction[]
+  dividends    Dividend[]
+}
+
+model Asset {
+  id           String        @id @default(cuid())
+  walletId     String
+  ticker       String
+  name         String        @default("")
+  assetClass   AssetClass
+  subtype      String?
+  sector       String?
+  createdAt    DateTime      @default(now())
+  wallet       Wallet        @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  dividends    Dividend[]
+
+  @@unique([walletId, ticker])
+}
+
+model Transaction {
+  id        String          @id @default(cuid())
+  walletId  String
+  assetId   String
+  type      TransactionType
+  date      DateTime
+  quantity  Decimal
+  unitPrice Decimal
+  fees      Decimal         @default(0)
+  notes     String?
+  createdAt DateTime        @default(now())
+  wallet    Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  asset     Asset           @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+
+model Dividend {
+  id           String       @id @default(cuid())
+  walletId     String
+  assetId      String
+  type         DividendType
+  exDate       DateTime
+  payDate      DateTime
+  valuePerUnit Decimal
+  quantity     Decimal
+  totalValue   Decimal
+  notes        String?
+  createdAt    DateTime     @default(now())
+  wallet       Wallet       @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  asset        Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+
+enum AssetClass {
+  FII
+  STOCK
+  FIXED_INCOME
+  TREASURY
+  CRYPTO
+}
+
+enum TransactionType {
+  BUY
+  SELL
+}
+
+enum DividendType {
+  DIVIDEND
+  JCP
+  INCOME
+  AMORTIZATION
+  SUBSCRIPTION
+}
