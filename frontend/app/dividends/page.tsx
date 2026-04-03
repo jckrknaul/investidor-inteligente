@@ -24,7 +24,7 @@ const EMPTY_FORM = {
 
 export default function DividendsPage() {
   const [dividends, setDividends] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
@@ -32,13 +32,17 @@ export default function DividendsPage() {
   const [syncMsg, setSyncMsg] = useState('')
   const [error, setError] = useState('')
 
-  const walletId = typeof window !== 'undefined' ? localStorage.getItem('walletId') ?? '' : ''
+  const [walletId, setWalletId] = useState('')
 
-  const load = async () => {
-    if (!walletId) return
+  useEffect(() => {
+    setWalletId(localStorage.getItem('walletId') ?? '')
+  }, [])
+
+  const load = async (id = walletId) => {
+    if (!id) return
     setLoading(true)
     try {
-      const data = await dividendsApi.list(walletId)
+      const data = await dividendsApi.list(id)
       setDividends(data)
     } finally {
       setLoading(false)
