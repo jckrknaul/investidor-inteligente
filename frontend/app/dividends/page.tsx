@@ -52,15 +52,21 @@ export default function DividendsPage() {
 
   useEffect(() => { load() }, [walletId])
 
-  const totalYear = dividends
-    .filter(d => new Date(d.payDate).getFullYear() === new Date().getFullYear())
+  const now = new Date()
+
+  const totalReceived = dividends
+    .filter(d => new Date(d.payDate) <= now && new Date(d.payDate).getFullYear() === now.getFullYear())
+    .reduce((s, d) => s + Number(d.totalValue), 0)
+
+  const totalPending = dividends
+    .filter(d => new Date(d.payDate) > now)
     .reduce((s, d) => s + Number(d.totalValue), 0)
 
   const total12M = (() => {
     const ago = new Date()
     ago.setMonth(ago.getMonth() - 12)
     return dividends
-      .filter(d => new Date(d.payDate) >= ago)
+      .filter(d => new Date(d.payDate) >= ago && new Date(d.payDate) <= now)
       .reduce((s, d) => s + Number(d.totalValue), 0)
   })()
 
@@ -144,15 +150,26 @@ export default function DividendsPage() {
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-4 mb-6">
         <Card>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-green-500/15 rounded-lg flex items-center justify-center">
               <TrendingUp size={20} className="text-green-400" />
             </div>
             <div>
-              <p className="text-xs text-text-secondary">Recebido em {new Date().getFullYear()}</p>
-              <p className="text-xl font-bold text-text-primary">{formatCurrency(totalYear)}</p>
+              <p className="text-xs text-text-secondary">Recebido em {now.getFullYear()}</p>
+              <p className="text-xl font-bold text-green-400">{formatCurrency(totalReceived)}</p>
+            </div>
+          </div>
+        </Card>
+        <Card>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-yellow-500/15 rounded-lg flex items-center justify-center">
+              <TrendingUp size={20} className="text-yellow-400" />
+            </div>
+            <div>
+              <p className="text-xs text-text-secondary">A receber</p>
+              <p className="text-xl font-bold text-yellow-400">{formatCurrency(totalPending)}</p>
             </div>
           </div>
         </Card>
@@ -162,7 +179,7 @@ export default function DividendsPage() {
               <TrendingUp size={20} className="text-accent" />
             </div>
             <div>
-              <p className="text-xs text-text-secondary">Últimos 12 meses</p>
+              <p className="text-xs text-text-secondary">Recebido — 12 meses</p>
               <p className="text-xl font-bold text-text-primary">{formatCurrency(total12M)}</p>
             </div>
           </div>
@@ -196,37 +213,47 @@ export default function DividendsPage() {
               </tr>
             </thead>
             <tbody>
-              {dividends.map((d: any) => (
-                <tr key={d.id} className="border-t border-border hover:bg-bg-hover transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <AssetLogo ticker={d.asset?.ticker} size={24} />
-                      <span className="font-semibold text-text-primary">{d.asset?.ticker}</span>
-                      <AssetClassBadge cls={d.asset?.assetClass} />
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-xs bg-green-500/15 text-green-400 px-2 py-0.5 rounded-full font-medium">
-                      {DIVIDEND_TYPE_LABELS[d.type as keyof typeof DIVIDEND_TYPE_LABELS] ?? d.type}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right text-text-secondary">{formatDate(d.exDate)}</td>
-                  <td className="px-4 py-3 text-right text-text-secondary">
-                    {d.payDate.slice(0, 10) !== d.exDate.slice(0, 10) ? formatDate(d.payDate) : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-right text-text-primary">{formatCurrency(Number(d.valuePerUnit))}</td>
-                  <td className="px-4 py-3 text-right text-text-secondary">{Number(d.quantity)}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-green-400">{formatCurrency(Number(d.totalValue))}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => handleDelete(d.id)}
-                      className="text-text-muted hover:text-red-400 transition-colors"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {dividends.map((d: any) => {
+                const received = new Date(d.payDate) <= new Date()
+                return (
+                  <tr key={d.id} className="border-t border-border hover:bg-bg-hover transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <AssetLogo ticker={d.asset?.ticker} size={24} />
+                        <span className="font-semibold text-text-primary">{d.asset?.ticker}</span>
+                        <AssetClassBadge cls={d.asset?.assetClass} />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-xs bg-green-500/15 text-green-400 px-2 py-0.5 rounded-full font-medium">
+                        {DIVIDEND_TYPE_LABELS[d.type as keyof typeof DIVIDEND_TYPE_LABELS] ?? d.type}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-text-secondary">{formatDate(d.exDate)}</td>
+                    <td className="px-4 py-3 text-right text-text-secondary">
+                      {d.payDate.slice(0, 10) !== d.exDate.slice(0, 10) ? formatDate(d.payDate) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right text-text-primary">{formatCurrency(Number(d.valuePerUnit))}</td>
+                    <td className="px-4 py-3 text-right text-text-secondary">{Number(d.quantity)}</td>
+                    <td className={`px-4 py-3 text-right font-semibold ${received ? 'text-green-400' : 'text-yellow-400'}`}>
+                      {formatCurrency(Number(d.totalValue))}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${received ? 'bg-green-500/15 text-green-400' : 'bg-yellow-500/15 text-yellow-400'}`}>
+                          {received ? 'Recebido' : 'A receber'}
+                        </span>
+                        <button
+                          onClick={() => handleDelete(d.id)}
+                          className="text-text-muted hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
