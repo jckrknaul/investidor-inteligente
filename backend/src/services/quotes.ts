@@ -225,6 +225,36 @@ export async function fetchDividends(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+export async function fetchFIISegment(ticker: string): Promise<string | null> {
+  const token = process.env.BRAPI_TOKEN
+  if (!token) return null
+  try {
+    const url = `https://brapi.dev/api/quote/${encodeURIComponent(ticker)}?token=${token}&modules=summaryProfile`
+    const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(6000) })
+    if (!res.ok) return null
+
+    const data = await res.json() as {
+      results?: { summaryProfile?: { industry?: string; longBusinessSummary?: string } }[]
+    }
+
+    const profile = data.results?.[0]?.summaryProfile
+    const raw = (profile?.industry ?? '').toLowerCase()
+    const summary = (profile?.longBusinessSummary ?? '').toLowerCase()
+    const text = raw || summary
+
+    if (!text) return null
+
+    if (/recebív|papel|cri\b|cra\b/.test(text)) return 'Papel'
+    if (/fundo.de.fundo|fof\b/.test(text))       return 'FOF'
+    if (/desenvolv/.test(text))                   return 'Desenvolvimento'
+    if (/multicategor|híbrido|hibrido/.test(text)) return 'Híbrido'
+    // Tijolo: logística, shopping, lajes, galpão, residencial, agência, hotel, hospital, etc.
+    return 'Tijolo'
+  } catch {
+    return null
+  }
+}
+
 export async function searchTickers(query: string): Promise<{ ticker: string; name: string; type: string; sector: string | null }[]> {
   try {
     const url = `${YAHOO_URL}/v1/finance/search?q=${encodeURIComponent(query)}&lang=pt-BR&region=BR&quotesCount=10`

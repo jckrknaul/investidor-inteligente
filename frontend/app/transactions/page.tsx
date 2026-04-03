@@ -90,6 +90,13 @@ export default function TransactionsPage() {
     return () => clearTimeout(t)
   }, [form.ticker, form.date, open])
 
+  useEffect(() => {
+    if (!open || editingId || form.assetClass !== 'FII' || form.ticker.length < 5) return
+    quotesApi.segment(form.ticker)
+      .then(({ segment }) => { if (segment) setForm(f => ({ ...f, subtype: segment })) })
+      .catch(() => {})
+  }, [form.ticker, form.assetClass, open])
+
   const openEdit = (tx: any) => {
     setEditingId(tx.id)
     setForm({

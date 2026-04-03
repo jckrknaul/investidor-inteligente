@@ -29,6 +29,9 @@ export const quotesApi = {
   get: (ticker: string, date?: string) =>
     api.get(`/quotes/${ticker}`, { params: date ? { date } : undefined })
       .then(r => r.data as { ticker: string; price: number }),
+  segment: (ticker: string) =>
+    api.get(`/quotes/${ticker}/segment`)
+      .then(r => r.data as { ticker: string; segment: string | null }),
 }
 
 // Auth

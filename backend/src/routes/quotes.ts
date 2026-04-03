@@ -1,11 +1,17 @@
 import { FastifyInstance } from 'fastify'
-import { fetchQuotes, fetchQuoteForDate, searchTickers } from '../services/quotes'
+import { fetchQuotes, fetchQuoteForDate, searchTickers, fetchFIISegment } from '../services/quotes'
 
 export async function quotesRoutes(app: FastifyInstance) {
   app.get('/quotes/search', async (req, reply) => {
     const { q } = req.query as { q?: string }
     if (!q || q.length < 1) return []
     return searchTickers(q)
+  })
+
+  app.get('/quotes/:ticker/segment', async (req) => {
+    const { ticker } = req.params as { ticker: string }
+    const segment = await fetchFIISegment(ticker.toUpperCase())
+    return { ticker: ticker.toUpperCase(), segment }
   })
 
   app.get('/quotes/:ticker', async (req, reply) => {
