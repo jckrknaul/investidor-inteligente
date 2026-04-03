@@ -1,11 +1,13 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
+import cron from 'node-cron'
 import { assetsRoutes } from './routes/assets'
 import { transactionsRoutes } from './routes/transactions'
 import { dividendsRoutes } from './routes/dividends'
 import { dashboardRoutes } from './routes/dashboard'
 import { walletsRoutes } from './routes/wallets'
 import { quotesRoutes } from './routes/quotes'
+import { syncAllWallets } from './services/syncDividends'
 
 const app = Fastify({ logger: true })
 
@@ -23,6 +25,17 @@ const start = async () => {
   await app.register(quotesRoutes)
 
   app.get('/health', async () => ({ status: 'ok' }))
+
+  // Cron: sincroniza proventos de todas as carteiras todo dia às 06:00
+  cron.schedule('0 6 * * *', async () => {
+    console.log('[cron] Iniciando sincronização de proventos...')
+    try {
+      const result = await syncAllWallets()
+      console.log(`[cron] Sync concluído — ${result.wallets} carteira(s), ${result.inserted} provento(s) inserido(s)`)
+    } catch (err) {
+      console.error('[cron] Erro na sincronização de proventos:', err)
+    }
+  }, { timezone: 'America/Sao_Paulo' })
 
   const port = Number(process.env.PORT ?? 3001)
   await app.listen({ port, host: '0.0.0.0' })

@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { fetchDividends } from '../services/quotes'
+import { syncWallet } from '../services/syncDividends'
 
 const dividendSchema = z.object({
   ticker: z.string().min(1).toUpperCase(),
@@ -76,75 +76,9 @@ export async function dividendsRoutes(app: FastifyInstance) {
     return reply.code(204).send()
   })
 
-  // Sincronização automática de proventos
   app.post('/wallets/:walletId/dividends/sync', async (req, reply) => {
     const { walletId } = req.params as { walletId: string }
-
-    // Busca todos os ativos da carteira com suas transações
-    const assets = await prisma.asset.findMany({
-      where: { walletId },
-      include: {
-        transactions: { orderBy: { date: 'asc' } },
-      },
-    })
-
-    if (assets.length === 0) {
-      return reply.code(200).send({ inserted: 0, tickers: [] })
-    }
-
-    let inserted = 0
-    const processed: string[] = []
-
-    await Promise.all(assets.map(async (asset) => {
-      if (asset.transactions.length === 0) return
-
-      // Data da primeira compra = ponto de partida para buscar proventos
-      const firstBuy = asset.transactions.find(tx => tx.type === 'BUY')
-      if (!firstBuy) return
-
-      const since = firstBuy.date
-
-      // Busca proventos na API
-      const events = await fetchDividends(asset.ticker, since, asset.assetClass)
-      if (events.length === 0) return
-
-      for (const ev of events) {
-        // Calcula posição na data ex (quantidade de cotas na data COM)
-        const qty = asset.transactions
-          .filter(tx => tx.date <= ev.exDate)
-          .reduce((sum, tx) => {
-            const q = Number(tx.quantity)
-            return tx.type === 'BUY' ? sum + q : sum - q
-          }, 0)
-
-        if (qty <= 0) continue
-
-        const totalValue = ev.valuePerUnit * qty
-
-        try {
-          await prisma.dividend.create({
-            data: {
-              walletId,
-              assetId: asset.id,
-              type: ev.type,
-              exDate: ev.exDate,
-              payDate: ev.payDate,
-              valuePerUnit: ev.valuePerUnit,
-              quantity: qty,
-              totalValue,
-              notes: 'sync:auto',
-            },
-          })
-          inserted++
-        } catch (e: any) {
-          // Ignora violação de unique (provento já existe)
-          if (!e?.code || e.code !== 'P2002') throw e
-        }
-      }
-
-      processed.push(asset.ticker)
-    }))
-
-    return reply.code(200).send({ inserted, tickers: processed })
+    const inserted = await syncWallet(walletId)
+    return reply.code(200).send({ inserted })
   })
 }
