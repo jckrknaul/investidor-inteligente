@@ -19,19 +19,17 @@ interface TickerInputProps {
   placeholder?: string
 }
 
-const ASSET_CLASS_TYPES: Record<string, string[]> = {
-  FII:          ['fund', 'mutualfund', 'etf'],
-  STOCK:        ['equity', 'stock', 'bdr'],
-  CRYPTO:       ['cryptocurrency'],
-  FIXED_INCOME: [],
-  TREASURY:     [],
-}
+const isFII = (r: TickerResult) =>
+  ['fund', 'mutualfund', 'etf'].includes(r.type) || /\d{2}$/.test(r.ticker)
 
 function filterByClass(results: TickerResult[], assetClass?: string): TickerResult[] {
   if (!assetClass) return results
-  const allowed = ASSET_CLASS_TYPES[assetClass]
-  if (!allowed || allowed.length === 0) return results
-  return results.filter(r => allowed.includes(r.type))
+  switch (assetClass) {
+    case 'FII':          return results.filter(r => isFII(r))
+    case 'STOCK':        return results.filter(r => !isFII(r) && ['equity', 'stock', 'bdr'].includes(r.type))
+    case 'CRYPTO':       return results.filter(r => r.type === 'cryptocurrency')
+    default:             return results
+  }
 }
 
 export function TickerInput({ value, onChange, assetClass, disabled, required, placeholder = 'Ex: PETR4' }: TickerInputProps) {
