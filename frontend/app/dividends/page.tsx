@@ -33,20 +33,21 @@ export default function DividendsPage() {
   useEffect(() => { load() }, [walletId])
 
   const now = new Date()
+  const hasPayDate = (d: any) => d.payDate.slice(0, 10) !== d.exDate.slice(0, 10)
 
   const totalReceived = dividends
-    .filter(d => new Date(d.payDate) <= now && new Date(d.payDate).getFullYear() === now.getFullYear())
+    .filter(d => hasPayDate(d) && new Date(d.payDate) <= now && new Date(d.payDate).getFullYear() === now.getFullYear())
     .reduce((s, d) => s + Number(d.totalValue), 0)
 
   const totalPending = dividends
-    .filter(d => new Date(d.payDate) > now)
+    .filter(d => hasPayDate(d) && new Date(d.payDate) > now)
     .reduce((s, d) => s + Number(d.totalValue), 0)
 
   const total12M = (() => {
     const ago = new Date()
     ago.setMonth(ago.getMonth() - 12)
     return dividends
-      .filter(d => new Date(d.payDate) >= ago && new Date(d.payDate) <= now)
+      .filter(d => hasPayDate(d) && new Date(d.payDate) >= ago && new Date(d.payDate) <= now)
       .reduce((s, d) => s + Number(d.totalValue), 0)
   })()
 
@@ -155,7 +156,7 @@ export default function DividendsPage() {
             </thead>
             <tbody>
               {dividends.map((d: any) => {
-                const received = new Date(d.payDate) <= now
+                const received = hasPayDate(d) && new Date(d.payDate) <= now
                 return (
                   <tr key={d.id} className="border-t border-border hover:bg-bg-hover transition-colors">
                     <td className="px-4 py-3">
@@ -176,13 +177,23 @@ export default function DividendsPage() {
                     </td>
                     <td className="px-4 py-3 text-right text-text-primary">{formatCurrency(Number(d.valuePerUnit))}</td>
                     <td className="px-4 py-3 text-right text-text-secondary">{Number(d.quantity)}</td>
-                    <td className={`px-4 py-3 text-right font-semibold ${received ? 'text-green-400' : 'text-yellow-400'}`}>
+                    <td className={`px-4 py-3 text-right font-semibold ${!hasPayDate(d) ? 'text-text-secondary' : received ? 'text-green-400' : 'text-yellow-400'}`}>
                       {formatCurrency(Number(d.totalValue))}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${received ? 'bg-green-500/15 text-green-400' : 'bg-yellow-500/15 text-yellow-400'}`}>
-                        {received ? 'Recebido' : 'A receber'}
-                      </span>
+                      {!hasPayDate(d) ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-bg-hover text-text-muted">
+                          Sem data
+                        </span>
+                      ) : received ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-500/15 text-green-400">
+                          Recebido
+                        </span>
+                      ) : (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-yellow-500/15 text-yellow-400">
+                          A receber
+                        </span>
+                      )}
                     </td>
                   </tr>
                 )
