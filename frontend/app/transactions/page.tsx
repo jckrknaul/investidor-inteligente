@@ -261,8 +261,9 @@ export default function TransactionsPage() {
               <label className="block text-xs text-text-secondary mb-1">Classe do Ativo</label>
               <select
                 value={form.assetClass}
-                onChange={e => field('assetClass', e.target.value)}
-                className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
+                onChange={e => setForm(f => ({ ...f, assetClass: e.target.value, ticker: '' }))}
+                disabled={!!editingId}
+                className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {ASSET_CLASSES.map(c => (
                   <option key={c} value={c}>{ASSET_CLASS_LABELS[c]}</option>
@@ -278,6 +279,7 @@ export default function TransactionsPage() {
                 required
                 value={form.ticker}
                 onChange={v => { field('ticker', v); setPriceMsg(''); lastFetchedRef.current = '' }}
+                assetClass={form.assetClass}
                 disabled={!!editingId}
               />
             </div>

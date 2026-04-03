@@ -13,12 +13,28 @@ interface TickerResult {
 interface TickerInputProps {
   value: string
   onChange: (ticker: string) => void
+  assetClass?: string
   disabled?: boolean
   required?: boolean
   placeholder?: string
 }
 
-export function TickerInput({ value, onChange, disabled, required, placeholder = 'Ex: PETR4' }: TickerInputProps) {
+const ASSET_CLASS_TYPES: Record<string, string[]> = {
+  FII:          ['fund', 'mutualfund', 'etf'],
+  STOCK:        ['equity', 'stock', 'bdr'],
+  CRYPTO:       ['cryptocurrency'],
+  FIXED_INCOME: [],
+  TREASURY:     [],
+}
+
+function filterByClass(results: TickerResult[], assetClass?: string): TickerResult[] {
+  if (!assetClass) return results
+  const allowed = ASSET_CLASS_TYPES[assetClass]
+  if (!allowed || allowed.length === 0) return results
+  return results.filter(r => allowed.includes(r.type))
+}
+
+export function TickerInput({ value, onChange, assetClass, disabled, required, placeholder = 'Ex: PETR4' }: TickerInputProps) {
   const [query, setQuery] = useState(value)
   const [results, setResults] = useState<TickerResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -52,7 +68,8 @@ export function TickerInput({ value, onChange, disabled, required, placeholder =
     debounceRef.current = setTimeout(async () => {
       setLoading(true)
       try {
-        const data = await quotesApi.search(q)
+        const raw = await quotesApi.search(q)
+        const data = filterByClass(raw, assetClass)
         setResults(data)
         setOpen(data.length > 0)
       } catch {
