@@ -20,16 +20,16 @@ interface TickerInputProps {
   placeholder?: string
 }
 
-const isFII = (r: TickerResult) =>
-  ['fund', 'mutualfund', 'etf'].includes(r.type) || /\d{2}$/.test(r.ticker)
+export const isFIIResult = (r: TickerResult) =>
+  r.type === 'fund' || r.type === 'mutualfund' || r.type === 'etf' || /\d{2}$/.test(r.ticker)
 
 function filterByClass(results: TickerResult[], assetClass?: string): TickerResult[] {
   if (!assetClass) return results
   switch (assetClass) {
-    case 'FII':          return results.filter(r => isFII(r))
-    case 'STOCK':        return results.filter(r => !isFII(r) && ['equity', 'stock', 'bdr'].includes(r.type))
-    case 'CRYPTO':       return results.filter(r => r.type === 'cryptocurrency')
-    default:             return results
+    case 'FII':    return results.filter(r => isFIIResult(r))
+    case 'STOCK':  return results.filter(r => !isFIIResult(r) && ['stock', 'equity', 'bdr'].includes(r.type))
+    case 'CRYPTO': return results.filter(r => r.type === 'cryptocurrency')
+    default:       return results
   }
 }
 
@@ -99,6 +99,9 @@ export function TickerInput({ value, onChange, onSelect, assetClass, disabled, r
     fund: 'FII',
     bdr: 'BDR',
     etf: 'ETF',
+    equity: 'Ação',
+    mutualfund: 'Fundo',
+    cryptocurrency: 'Crypto',
   }
 
   return (

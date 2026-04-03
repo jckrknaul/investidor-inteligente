@@ -256,15 +256,34 @@ export async function fetchFIISegment(ticker: string): Promise<string | null> {
 }
 
 export async function searchTickers(query: string): Promise<{ ticker: string; name: string; type: string; sector: string | null }[]> {
+  const token = process.env.BRAPI_TOKEN
+  if (token) {
+    try {
+      const url = `https://brapi.dev/api/quote/list?search=${encodeURIComponent(query)}&token=${token}&limit=10`
+      const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
+      if (res.ok) {
+        const data = await res.json() as {
+          stocks?: { stock: string; name: string; type: string; sector: string | null }[]
+        }
+        const results = (data.stocks ?? []).map(s => ({
+          ticker: s.stock,
+          name: s.name,
+          type: s.type,        // 'stock' | 'fund' | 'bdr'
+          sector: s.sector,
+        }))
+        if (results.length > 0) return results
+      }
+    } catch { /* fallback */ }
+  }
+
+  // Fallback: Yahoo Finance
   try {
     const url = `${YAHOO_URL}/v1/finance/search?q=${encodeURIComponent(query)}&lang=pt-BR&region=BR&quotesCount=10`
     const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(5000) })
     if (!res.ok) return []
-
     const data = await res.json() as {
       quotes?: { symbol: string; shortname?: string; longname?: string; quoteType?: string; sector?: string }[]
     }
-
     return (data.quotes ?? [])
       .filter(q => q.symbol?.endsWith('.SA') || q.symbol?.includes('-'))
       .map(q => ({

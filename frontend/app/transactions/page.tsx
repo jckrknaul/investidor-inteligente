@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
 import { AssetClassBadge } from '@/components/ui/Badge'
 import { AssetLogo } from '@/components/ui/AssetLogo'
-import { TickerInput } from '@/components/ui/TickerInput'
+import { TickerInput, isFIIResult } from '@/components/ui/TickerInput'
 import { transactionsApi, quotesApi } from '@/lib/api'
 import { formatCurrency, formatDate, ASSET_CLASS_LABELS } from '@/lib/formatters'
 import { Plus, Trash2, Pencil } from 'lucide-react'
@@ -295,8 +295,7 @@ export default function TransactionsPage() {
                 value={form.ticker}
                 onChange={v => { field('ticker', v); setPriceMsg(''); lastFetchedRef.current = '' }}
                 onSelect={r => {
-                  const isFii = ['fund', 'mutualfund', 'etf'].includes(r.type) || /\d{2}$/.test(r.ticker)
-                  const cls = isFii ? 'FII' : r.type === 'cryptocurrency' ? 'CRYPTO' : 'STOCK'
+                  const cls = isFIIResult(r) ? 'FII' : r.type === 'cryptocurrency' ? 'CRYPTO' : 'STOCK'
                   setForm(f => ({ ...f, ticker: r.ticker, assetClass: cls }))
                 }}
                 assetClass={form.assetClass}
