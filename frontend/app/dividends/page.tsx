@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { AssetClassBadge } from '@/components/ui/Badge'
 import { dividendsApi } from '@/lib/api'
 import { formatCurrency, formatDate, ASSET_CLASS_LABELS, DIVIDEND_TYPE_LABELS } from '@/lib/formatters'
-import { Plus, Trash2, TrendingUp } from 'lucide-react'
+import { Plus, RefreshCw, Trash2, TrendingUp } from 'lucide-react'
 
 const ASSET_CLASSES = ['FII', 'STOCK', 'FIXED_INCOME', 'TREASURY', 'CRYPTO'] as const
 const DIVIDEND_TYPES = ['DIVIDEND', 'JCP', 'INCOME', 'AMORTIZATION', 'SUBSCRIPTION'] as const
@@ -28,6 +28,8 @@ export default function DividendsPage() {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState('')
   const [error, setError] = useState('')
 
   const walletId = typeof window !== 'undefined' ? localStorage.getItem('walletId') ?? '' : ''
@@ -83,6 +85,24 @@ export default function DividendsPage() {
     await load()
   }
 
+  const handleSync = async () => {
+    setSyncing(true)
+    setSyncMsg('')
+    try {
+      const result = await dividendsApi.sync(walletId)
+      setSyncMsg(
+        result.inserted > 0
+          ? `${result.inserted} provento(s) importado(s) de: ${result.tickers.join(', ')}`
+          : 'Nenhum provento novo encontrado.'
+      )
+      if (result.inserted > 0) await load()
+    } catch {
+      setSyncMsg('Erro ao sincronizar. Verifique o BRAPI_TOKEN ou tente novamente.')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   const field = (key: keyof typeof EMPTY_FORM, value: string) =>
     setForm(f => ({ ...f, [key]: value }))
 
@@ -93,14 +113,30 @@ export default function DividendsPage() {
           <h1 className="text-xl font-bold text-text-primary">Proventos</h1>
           <p className="text-text-secondary text-sm mt-0.5">Dividendos, JCP e rendimentos recebidos</p>
         </div>
-        <button
-          onClick={() => setOpen(true)}
-          className="flex items-center gap-2 bg-accent hover:bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
-          <Plus size={16} />
-          Adicionar Provento
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center gap-2 bg-bg-secondary hover:bg-bg-hover border border-border text-text-secondary hover:text-text-primary text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Sincronizando...' : 'Sincronizar'}
+          </button>
+          <button
+            onClick={() => setOpen(true)}
+            className="flex items-center gap-2 bg-accent hover:bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            <Plus size={16} />
+            Adicionar Provento
+          </button>
+        </div>
       </div>
+
+      {syncMsg && (
+        <div className={`mb-4 px-4 py-2.5 rounded-lg text-sm ${syncMsg.startsWith('Erro') ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
+          {syncMsg}
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 gap-4 mb-6">

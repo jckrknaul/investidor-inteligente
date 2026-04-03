@@ -65,4 +65,6 @@ export const dividendsApi = {
     api.post(`/wallets/${walletId}/dividends`, data).then(r => r.data),
   remove: (id: string) =>
     api.delete(`/dividends/${id}`).then(r => r.data),
+  sync: (walletId: string) =>
+    api.post(`/wallets/${walletId}/dividends/sync`).then(r => r.data as { inserted: number; tickers: string[] }),
 }

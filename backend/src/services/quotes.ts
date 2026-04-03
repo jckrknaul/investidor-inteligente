@@ -119,6 +119,112 @@ export function priceAtDate(history: { ts: number; close: number }[], targetTs: 
   return best.close
 }
 
+// ─── Proventos automáticos ────────────────────────────────────────────────────
+
+export type DividendType = 'DIVIDEND' | 'JCP' | 'INCOME' | 'AMORTIZATION' | 'SUBSCRIPTION'
+
+export interface DividendEvent {
+  exDate: Date
+  payDate: Date
+  valuePerUnit: number
+  type: DividendType
+}
+
+function normDate(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+}
+
+function brapiLabelToType(label: string): DividendType {
+  const l = label.toUpperCase()
+  if (l.includes('JSCP') || l.includes('JCP')) return 'JCP'
+  if (l.includes('RENDIMENTO') || l.includes('INCOME')) return 'INCOME'
+  if (l.includes('AMORTIZ')) return 'AMORTIZATION'
+  if (l.includes('SUBSCRI')) return 'SUBSCRIPTION'
+  return 'DIVIDEND'
+}
+
+async function fetchDividendsBrapi(ticker: string, since: Date, token: string): Promise<DividendEvent[]> {
+  try {
+    const url = `https://brapi.dev/api/quote/${encodeURIComponent(ticker)}?token=${token}&dividends=true`
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    if (!res.ok) return []
+
+    const data = await res.json() as {
+      results?: {
+        dividendsData?: {
+          cashDividends?: {
+            paymentDate?: string
+            rate?: number
+            label?: string
+            lastDatePrior?: string
+          }[]
+        }
+      }[]
+    }
+
+    const items = data.results?.[0]?.dividendsData?.cashDividends ?? []
+    const sinceTs = since.getTime()
+
+    return items
+      .filter(item => item.rate && item.lastDatePrior)
+      .map(item => {
+        const exDate = normDate(new Date(item.lastDatePrior!))
+        const payDate = item.paymentDate ? normDate(new Date(item.paymentDate)) : exDate
+        return { exDate, payDate, valuePerUnit: item.rate!, type: brapiLabelToType(item.label ?? '') }
+      })
+      .filter(e => e.exDate.getTime() >= sinceTs)
+  } catch {
+    return []
+  }
+}
+
+async function fetchDividendsYahoo(ticker: string, since: Date, assetClass: string): Promise<DividendEvent[]> {
+  try {
+    const symbol = toYahooTicker(ticker)
+    const p1 = Math.floor(since.getTime() / 1000)
+    const p2 = Math.floor(Date.now() / 1000)
+    const url = `${YAHOO_URL}/v8/finance/chart/${symbol}?events=dividends&period1=${p1}&period2=${p2}&interval=1d`
+
+    const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(8000) })
+    if (!res.ok) return []
+
+    const data = await res.json() as {
+      chart?: {
+        result?: {
+          events?: {
+            dividends?: Record<string, { amount: number; date: number }>
+          }
+        }[]
+      }
+    }
+
+    const raw = data.chart?.result?.[0]?.events?.dividends ?? {}
+    const type: DividendType = (assetClass === 'FII' || assetClass === 'FIXED_INCOME') ? 'INCOME' : 'DIVIDEND'
+
+    return Object.values(raw).map(ev => {
+      const exDate = normDate(new Date(ev.date * 1000))
+      return { exDate, payDate: exDate, valuePerUnit: ev.amount, type }
+    })
+  } catch {
+    return []
+  }
+}
+
+export async function fetchDividends(
+  ticker: string,
+  since: Date,
+  assetClass: string,
+): Promise<DividendEvent[]> {
+  const brapiToken = process.env.BRAPI_TOKEN
+  if (brapiToken) {
+    const events = await fetchDividendsBrapi(ticker, since, brapiToken)
+    if (events.length > 0) return events
+  }
+  return fetchDividendsYahoo(ticker, since, assetClass)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function searchTickers(query: string): Promise<{ ticker: string; name: string; type: string; sector: string | null }[]> {
   try {
     const url = `${YAHOO_URL}/v1/finance/search?q=${encodeURIComponent(query)}&lang=pt-BR&region=BR&quotesCount=10`
