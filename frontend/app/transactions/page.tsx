@@ -90,6 +90,14 @@ export default function TransactionsPage() {
     return () => clearTimeout(t)
   }, [form.ticker, form.date, open])
 
+  // Auto-detecta FII pelo sufixo numérico ao digitar manualmente
+  useEffect(() => {
+    if (!open || editingId || form.ticker.length < 5) return
+    if (/\d{2}$/.test(form.ticker) && form.assetClass !== 'FII') {
+      setForm(f => ({ ...f, assetClass: 'FII', subtype: '' }))
+    }
+  }, [form.ticker, open])
+
   useEffect(() => {
     if (!open || editingId || form.assetClass !== 'FII' || form.ticker.length < 5) return
     quotesApi.segment(form.ticker)
