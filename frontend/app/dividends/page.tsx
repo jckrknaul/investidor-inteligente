@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { AssetClassBadge } from '@/components/ui/Badge'
 import { dividendsApi } from '@/lib/api'
 import { formatCurrency, formatDate, ASSET_CLASS_LABELS, DIVIDEND_TYPE_LABELS } from '@/lib/formatters'
+import { AssetLogo } from '@/components/ui/AssetLogo'
 import { Plus, RefreshCw, Trash2, TrendingUp } from 'lucide-react'
 
 const ASSET_CLASSES = ['FII', 'STOCK', 'FIXED_INCOME', 'TREASURY', 'CRYPTO'] as const
@@ -199,6 +200,7 @@ export default function DividendsPage() {
                 <tr key={d.id} className="border-t border-border hover:bg-bg-hover transition-colors">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
+                      <AssetLogo ticker={d.asset?.ticker} size={24} />
                       <span className="font-semibold text-text-primary">{d.asset?.ticker}</span>
                       <AssetClassBadge cls={d.asset?.assetClass} />
                     </div>
