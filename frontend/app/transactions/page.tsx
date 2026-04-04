@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
@@ -8,9 +8,14 @@ import { AssetLogo } from '@/components/ui/AssetLogo'
 import { TickerInput, isFIIResult } from '@/components/ui/TickerInput'
 import { transactionsApi, quotesApi } from '@/lib/api'
 import { formatCurrency, formatDate, ASSET_CLASS_LABELS } from '@/lib/formatters'
-import { Plus, Trash2, Pencil } from 'lucide-react'
+import { Plus, Trash2, Pencil, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
+} from 'recharts'
 
 const ASSET_CLASSES = ['FII', 'STOCK', 'FIXED_INCOME', 'TREASURY', 'CRYPTO'] as const
+const ITEMS_PER_PAGE = 20
 const FII_SUBTYPES = ['Tijolo', 'Papel', 'Híbrido', 'FOF', 'Desenvolvimento']
 
 const EMPTY_FORM = {
@@ -35,8 +40,19 @@ export default function TransactionsPage() {
   const [fetchingPrice, setFetchingPrice] = useState(false)
   const [priceMsg, setPriceMsg] = useState('')
   const [error, setError] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [filterClass, setFilterClass] = useState('')
+  const [filterTicker, setFilterTicker] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
-  const walletId = typeof window !== 'undefined' ? localStorage.getItem('walletId') ?? '' : ''
+  const [walletId, setWalletId] = useState('')
+  const [chartView, setChartView] = useState<'mensal' | 'anual'>('mensal')
+  const [chartClass, setChartClass] = useState('')
+  const [chartPeriod, setChartPeriod] = useState<'all' | 'ytd' | '12m' | '2y' | '5y'>('ytd')
+
+  useEffect(() => {
+    setWalletId(localStorage.getItem('walletId') ?? '')
+  }, [])
 
   const load = async () => {
     if (!walletId) return
@@ -138,8 +154,10 @@ export default function TransactionsPage() {
           notes: form.notes || undefined,
         })
       } else {
+        const detectedClass = /\d{2}$/.test(form.ticker) ? 'FII' : form.assetClass
         await transactionsApi.create(walletId, {
           ...form,
+          assetClass: detectedClass,
           quantity: Number(form.quantity),
           unitPrice: Number(form.unitPrice),
           fees: Number(form.fees),
@@ -149,6 +167,7 @@ export default function TransactionsPage() {
       setOpen(false)
       setForm(EMPTY_FORM)
       setEditingId(null)
+      setCurrentPage(1)
       await load()
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Erro ao salvar lançamento')
@@ -157,14 +176,103 @@ export default function TransactionsPage() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Remover este lançamento?')) return
-    await transactionsApi.remove(id)
+  const handleDelete = async () => {
+    if (!confirmDelete) return
+    await transactionsApi.remove(confirmDelete)
+    setConfirmDelete(null)
     await load()
   }
 
   const field = (key: keyof typeof EMPTY_FORM, value: string) =>
     setForm(f => ({ ...f, [key]: value }))
+
+  // Dados do gráfico Compras x Vendas
+  const chartData = useMemo(() => {
+    const now = new Date()
+    let cutoff: Date | null = null
+    if (chartPeriod === 'ytd') cutoff = new Date(now.getFullYear(), 0, 1)
+    else if (chartPeriod === '12m') { cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 12) }
+    else if (chartPeriod === '2y') { cutoff = new Date(now); cutoff.setFullYear(cutoff.getFullYear() - 2) }
+    else if (chartPeriod === '5y') { cutoff = new Date(now); cutoff.setFullYear(cutoff.getFullYear() - 5) }
+
+    const filtered = transactions.filter(tx => {
+      if (chartClass && tx.asset?.assetClass !== chartClass) return false
+      if (cutoff && new Date(tx.date) < cutoff) return false
+      return true
+    })
+
+    if (chartView === 'mensal') {
+      // Build month slots from cutoff (or earliest tx) to now
+      const earliest = filtered.length
+        ? new Date(filtered.reduce((a, b) => new Date(a.date) < new Date(b.date) ? a : b).date)
+        : now
+      const startYear = (cutoff ?? earliest).getFullYear()
+      const startMonth = (cutoff ?? earliest).getMonth()
+      const slots = new Map<string, { label: string; Compras: number; Vendas: number }>()
+      let y = startYear, m = startMonth
+      while (y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth())) {
+        const key = `${y}-${m}`
+        slots.set(key, { label: new Date(y, m, 1).toLocaleString('pt-BR', { month: 'short' }).replace('.', ''), Compras: 0, Vendas: 0 })
+        m++; if (m > 11) { m = 0; y++ }
+      }
+      filtered.forEach(tx => {
+        const d = new Date(tx.date)
+        const key = `${d.getUTCFullYear()}-${d.getUTCMonth()}`
+        const slot = slots.get(key)
+        if (!slot) return
+        const total = Number(tx.quantity) * Number(tx.unitPrice) + Number(tx.fees)
+        if (tx.type === 'BUY') slot.Compras += total
+        else slot.Vendas -= total
+      })
+      return Array.from(slots.values())
+    } else {
+      const map = new Map<number, { Compras: number; Vendas: number }>()
+      filtered.forEach(tx => {
+        const year = new Date(tx.date).getUTCFullYear()
+        if (!map.has(year)) map.set(year, { Compras: 0, Vendas: 0 })
+        const total = Number(tx.quantity) * Number(tx.unitPrice) + Number(tx.fees)
+        const entry = map.get(year)!
+        if (tx.type === 'BUY') entry.Compras += total
+        else entry.Vendas -= total
+      })
+      return Array.from(map.entries())
+        .sort(([a], [b]) => a - b)
+        .map(([year, v]) => ({ label: String(year), ...v }))
+    }
+  }, [transactions, chartView, chartClass, chartPeriod])
+
+  // Opções de filtro
+  const classOptions = useMemo(() =>
+    [...new Set(transactions.map(t => t.asset?.assetClass).filter(Boolean))].sort()
+  , [transactions])
+
+  const tickerOptions = useMemo(() =>
+    [...new Set(transactions.map(t => t.asset?.ticker).filter(Boolean))].sort()
+  , [transactions])
+
+  // Filtrar transações
+  const filteredTransactions = useMemo(() =>
+    transactions.filter(t => {
+      if (filterClass && t.asset?.assetClass !== filterClass) return false
+      if (filterTicker && t.asset?.ticker !== filterTicker) return false
+      return true
+    })
+  , [transactions, filterClass, filterTicker])
+
+  // Paginação
+  const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE)
+  const startIdx = (currentPage - 1) * ITEMS_PER_PAGE
+  const endIdx = startIdx + ITEMS_PER_PAGE
+  const paginatedTransactions = filteredTransactions.slice(startIdx, endIdx)
+
+  const handlePrevPage = () => setCurrentPage(p => Math.max(1, p - 1))
+  const handleNextPage = () => setCurrentPage(p => Math.min(totalPages, p + 1))
+
+  const handleFilterChange = (classFilter: string, tickerFilter: string) => {
+    setFilterClass(classFilter)
+    setFilterTicker(tickerFilter)
+    setCurrentPage(1)
+  }
 
   return (
     <AppLayout>
@@ -182,6 +290,125 @@ export default function TransactionsPage() {
         </button>
       </div>
 
+      {/* Gráfico Compras x Vendas */}
+      {!loading && transactions.length > 0 && (
+        <Card className="mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h2 className="text-sm font-semibold text-text-primary">Compras x Vendas</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Filtro por classe */}
+              <select
+                value={chartClass}
+                onChange={e => setChartClass(e.target.value)}
+                className="bg-bg-primary border border-border rounded-lg px-2 py-1.5 text-text-secondary text-xs focus:outline-none focus:border-accent"
+              >
+                <option value="">Todas as classes</option>
+                {classOptions.map(c => (
+                  <option key={c} value={c}>{ASSET_CLASS_LABELS[c as keyof typeof ASSET_CLASS_LABELS] ?? c}</option>
+                ))}
+              </select>
+              {/* Filtro de período */}
+              <div className="flex bg-bg-primary border border-border rounded-lg overflow-hidden text-xs">
+                {([
+                  { value: 'all', label: 'Tudo' },
+                  { value: 'ytd', label: 'Ano atual' },
+                  { value: '12m', label: '12M' },
+                  { value: '2y', label: '2A' },
+                  { value: '5y', label: '5A' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setChartPeriod(opt.value)}
+                    className={`px-3 py-1.5 font-medium transition-colors ${
+                      chartPeriod === opt.value ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {/* Toggle Mensal / Anual */}
+              <div className="flex bg-bg-primary border border-border rounded-lg overflow-hidden text-xs">
+                {(['mensal', 'anual'] as const).map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setChartView(v)}
+                    className={`px-3 py-1.5 font-medium transition-colors capitalize ${
+                      chartView === v ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    {v.charAt(0).toUpperCase() + v.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chartData} barCategoryGap="35%" stackOffset="sign">
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
+              <YAxis
+                tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
+                axisLine={false}
+                tickLine={false}
+                tickFormatter={v => {
+                  const abs = Math.abs(v)
+                  return abs >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
+                }}
+                width={48}
+              />
+              <ReferenceLine y={0} stroke="var(--border)" strokeWidth={1} />
+              <Tooltip
+                contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+                labelStyle={{ color: 'var(--text-primary)', fontWeight: 600 }}
+                formatter={(v: number) => formatCurrency(Math.abs(v))}
+              />
+              <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+              <Bar dataKey="Compras" stackId="a" fill="#3fb950" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Vendas" stackId="a" fill="#f85149" radius={[0, 0, 4, 4]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      )}
+
+      {/* Filtros */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <select
+          value={filterClass}
+          onChange={e => handleFilterChange(e.target.value, '')}
+          className="bg-bg-secondary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
+        >
+          <option value="">Todas as classes</option>
+          {classOptions.map(c => (
+            <option key={c} value={c}>{ASSET_CLASS_LABELS[c as keyof typeof ASSET_CLASS_LABELS] ?? c}</option>
+          ))}
+        </select>
+
+        <select
+          value={filterTicker}
+          onChange={e => handleFilterChange(filterClass, e.target.value)}
+          className="bg-bg-secondary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
+        >
+          <option value="">Todos os ativos</option>
+          {tickerOptions.map(t => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+
+        {(filterClass || filterTicker) && (
+          <button
+            onClick={() => handleFilterChange('', '')}
+            className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors ml-2"
+          >
+            <X size={13} /> Limpar
+          </button>
+        )}
+
+        <span className="ml-auto text-xs text-text-muted">
+          {filteredTransactions.length} de {transactions.length} lançamentos
+        </span>
+      </div>
+
       <Card className="p-0 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-40 text-text-muted text-sm animate-pulse">
@@ -193,6 +420,10 @@ export default function TransactionsPage() {
             <button onClick={openNew} className="text-accent hover:underline">
               Adicionar primeiro lançamento
             </button>
+          </div>
+        ) : filteredTransactions.length === 0 ? (
+          <div className="flex items-center justify-center h-24 text-text-muted text-sm">
+            Nenhum lançamento com os filtros selecionados.
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -210,7 +441,7 @@ export default function TransactionsPage() {
               </tr>
             </thead>
             <tbody>
-              {transactions.map((tx: any) => (
+              {paginatedTransactions.map((tx: any) => (
                 <tr key={tx.id} className="border-t border-border hover:bg-bg-hover transition-colors">
                   <td className="px-4 py-3">
                     <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
@@ -244,7 +475,7 @@ export default function TransactionsPage() {
                         <Pencil size={14} />
                       </button>
                       <button
-                        onClick={() => handleDelete(tx.id)}
+                        onClick={() => setConfirmDelete(tx.id)}
                         className="text-text-muted hover:text-red-400 transition-colors"
                       >
                         <Trash2 size={14} />
@@ -257,6 +488,48 @@ export default function TransactionsPage() {
           </table>
         )}
       </Card>
+
+      {/* Paginação */}
+      {!loading && filteredTransactions.length > ITEMS_PER_PAGE && (
+        <div className="flex items-center justify-between mt-4 px-4">
+          <span className="text-xs text-text-muted">
+            Mostrando {startIdx + 1} a {Math.min(endIdx, filteredTransactions.length)} de {filteredTransactions.length} lançamentos
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrevPage}
+              disabled={currentPage === 1}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronLeft size={16} />
+              Anterior
+            </button>
+            <div className="flex items-center gap-2">
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <button
+                  key={i + 1}
+                  onClick={() => setCurrentPage(i + 1)}
+                  className={`w-8 h-8 rounded text-xs font-medium transition-colors ${
+                    currentPage === i + 1
+                      ? 'bg-accent text-white'
+                      : 'bg-bg-secondary text-text-secondary hover:text-text-primary border border-border'
+                  }`}
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={handleNextPage}
+              disabled={currentPage === totalPages}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Próximo
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
 
       <Modal open={open} onClose={() => { setOpen(false); setEditingId(null) }} title={editingId ? 'Editar Lançamento' : 'Adicionar Lançamento'}>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -417,6 +690,15 @@ export default function TransactionsPage() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title="Remover lançamento"
+        description="Esta ação não pode ser desfeita. O lançamento será removido permanentemente."
+        confirmLabel="Remover"
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </AppLayout>
   )
 }

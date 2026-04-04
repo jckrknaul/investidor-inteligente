@@ -78,6 +78,12 @@ export async function dividendsRoutes(app: FastifyInstance) {
 
   app.post('/wallets/:walletId/dividends/sync', async (req, reply) => {
     const { walletId } = req.params as { walletId: string }
+    const { reset } = req.query as { reset?: string }
+
+    if (reset === 'true') {
+      await prisma.dividend.deleteMany({ where: { walletId, notes: 'sync:auto' } })
+    }
+
     const inserted = await syncWallet(walletId)
     return reply.code(200).send({ inserted })
   })

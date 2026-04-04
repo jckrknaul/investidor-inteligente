@@ -57,8 +57,8 @@ function AssetRow({ asset, totalPatrimonio }: { asset: Asset; totalPatrimonio: n
   )
 }
 
-function AssetGroup({ cls, assets, totalPatrimonio }: { cls: string; assets: Asset[]; totalPatrimonio: number }) {
-  const [open, setOpen] = useState(true)
+function AssetGroup({ cls, assets, totalPatrimonio, defaultOpen }: { cls: string; assets: Asset[]; totalPatrimonio: number; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
   const groupValue = assets.reduce((s, a) => s + a.currentValue, 0)
   const groupGain = assets.reduce((s, a) => s + a.gain, 0)
   const groupPct = totalPatrimonio > 0 ? (groupValue / totalPatrimonio) * 100 : 0
@@ -110,8 +110,8 @@ export function AssetTable({ groupedAssets, totalPatrimonio }: AssetTableProps) 
           </tr>
         </thead>
         <tbody>
-          {sorted.map(([cls, assets]) => (
-            <AssetGroup key={cls} cls={cls} assets={assets} totalPatrimonio={totalPatrimonio} />
+          {sorted.map(([cls, assets], i) => (
+            <AssetGroup key={cls} cls={cls} assets={assets} totalPatrimonio={totalPatrimonio} defaultOpen={i === 0} />
           ))}
         </tbody>
       </table>

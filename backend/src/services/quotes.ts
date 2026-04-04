@@ -2,8 +2,8 @@ const YAHOO_URL = 'https://query1.finance.yahoo.com'
 const HEADERS = { 'User-Agent': 'Mozilla/5.0' }
 
 function toYahooTicker(ticker: string): string {
-  // Criptos já têm sufixo (BTC-USD), índices também; ações BR recebem .SA
-  if (ticker.includes('.') || ticker.includes('-')) return ticker
+  // Criptos já têm sufixo (BTC-USD), índices (^BVSP, ^IFIX) e outros; ações BR recebem .SA
+  if (ticker.includes('.') || ticker.includes('-') || ticker.startsWith('^')) return ticker
   return `${ticker}.SA`
 }
 
@@ -108,6 +108,56 @@ export async function fetchYearHistory(ticker: string): Promise<{ ts: number; cl
   }
 }
 
+async function fetchMonthlyHistoryBrapi(ticker: string, fromDate: Date): Promise<{ ts: number; close: number }[]> {
+  try {
+    const token = process.env.BRAPI_TOKEN ?? ''
+    const url = `https://brapi.dev/api/quote/${encodeURIComponent(ticker)}?range=1y&interval=1mo&token=${token}`
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) })
+    if (!res.ok) return []
+    const data = await res.json() as {
+      results?: { historicalDataPrice?: { date: number; close: number | null }[] }[]
+    }
+    const prices = data.results?.[0]?.historicalDataPrice ?? []
+    return prices
+      .filter(p => p.close && p.close > 0 && p.date * 1000 >= fromDate.getTime())
+      .map(p => ({ ts: p.date, close: p.close! }))
+      .sort((a, b) => a.ts - b.ts)
+  } catch {
+    return []
+  }
+}
+
+export async function fetchMonthlyHistory(ticker: string, fromDate: Date): Promise<{ ts: number; close: number }[]> {
+  // IFIX não está disponível no Yahoo Finance — usa brapi
+  if (ticker === '^IFIX') return fetchMonthlyHistoryBrapi('IFIX', fromDate)
+
+  try {
+    const symbol = toYahooTicker(ticker)
+    const period1 = Math.floor(fromDate.getTime() / 1000)
+    const period2 = Math.floor(Date.now() / 1000)
+    const url = `${YAHOO_URL}/v8/finance/chart/${symbol}?interval=1mo&period1=${period1}&period2=${period2}`
+    const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(10000) })
+    if (!res.ok) return []
+    const data = await res.json() as {
+      chart?: {
+        result?: {
+          timestamp?: number[]
+          indicators?: { adjclose?: { adjclose?: (number | null)[] }[]; quote?: { close?: (number | null)[] }[] }
+        }[]
+      }
+    }
+    const result = data.chart?.result?.[0]
+    if (!result?.timestamp?.length) return []
+    const timestamps = result.timestamp!
+    const closes = result.indicators?.adjclose?.[0]?.adjclose ?? result.indicators?.quote?.[0]?.close ?? []
+    return timestamps
+      .map((ts, i) => ({ ts, close: closes[i] ?? 0 }))
+      .filter(e => e.close > 0)
+  } catch {
+    return []
+  }
+}
+
 export function priceAtDate(history: { ts: number; close: number }[], targetTs: number): number | null {
   if (!history.length) return null
   let best = history[0]
@@ -178,6 +228,46 @@ async function fetchDividendsBrapi(ticker: string, since: Date, token: string): 
   }
 }
 
+async function fetchDividendsStatusInvest(ticker: string, since: Date): Promise<DividendEvent[]> {
+  try {
+    const url = `https://statusinvest.com.br/fii/companytickerprovents?ticker=${encodeURIComponent(ticker)}&chartProventsType=2`
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://statusinvest.com.br/',
+      },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return []
+
+    const data = await res.json() as {
+      assetEarningsModels?: { ed: string; pd: string; v: number; et: string }[]
+    }
+
+    const items = data.assetEarningsModels ?? []
+    const sinceTs = since.getTime()
+
+    return items
+      .filter(item => item.ed && item.v > 0)
+      .map(item => {
+        // Formato dd/MM/yyyy → Date
+        const parseDate = (s: string) => {
+          const [d, m, y] = s.split('/')
+          return normDate(new Date(Number(y), Number(m) - 1, Number(d)))
+        }
+        const exDate = parseDate(item.ed)
+        const payDate = item.pd ? parseDate(item.pd) : exDate
+        const type: DividendType = item.et.toUpperCase().includes('JCP') ? 'JCP'
+          : item.et.toUpperCase().includes('AMORT') ? 'AMORTIZATION'
+          : 'INCOME'
+        return { exDate, payDate, valuePerUnit: item.v, type }
+      })
+      .filter(e => e.exDate.getTime() >= sinceTs)
+  } catch {
+    return []
+  }
+}
+
 async function fetchDividendsYahoo(ticker: string, since: Date, assetClass: string): Promise<DividendEvent[]> {
   try {
     const symbol = toYahooTicker(ticker)
@@ -215,11 +305,22 @@ export async function fetchDividends(
   since: Date,
   assetClass: string,
 ): Promise<DividendEvent[]> {
+  const isFII = assetClass === 'FII'
   const brapiToken = process.env.BRAPI_TOKEN
-  if (brapiToken) {
-    const events = await fetchDividendsBrapi(ticker, since, brapiToken)
-    if (events.length > 0) return events
+
+  // FIIs: Status Invest tem datas de pagamento reais e valores corretos
+  if (isFII) {
+    const siEvents = await fetchDividendsStatusInvest(ticker, since)
+    if (siEvents.length > 0) return siEvents
   }
+
+  // Ações/outros: brapi (JCP, tipo correto)
+  if (!isFII && brapiToken) {
+    const brapiEvents = await fetchDividendsBrapi(ticker, since, brapiToken)
+    if (brapiEvents.length > 0) return brapiEvents
+  }
+
+  // Fallback: Yahoo Finance
   return fetchDividendsYahoo(ticker, since, assetClass)
 }
 

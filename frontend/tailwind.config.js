@@ -8,16 +8,16 @@ module.exports = {
     extend: {
       colors: {
         bg: {
-          primary: '#0d1117',
-          secondary: '#161b22',
-          card: '#1c2128',
-          hover: '#21262d',
+          primary: 'var(--bg-primary)',
+          secondary: 'var(--bg-secondary)',
+          card: 'var(--bg-card)',
+          hover: 'var(--bg-hover)',
         },
-        border: '#30363d',
+        border: 'var(--border)',
         text: {
-          primary: '#e6edf3',
-          secondary: '#8b949e',
-          muted: '#484f58',
+          primary: 'var(--text-primary)',
+          secondary: 'var(--text-secondary)',
+          muted: 'var(--text-muted)',
         },
         green: {
           400: '#3fb950',
@@ -27,7 +27,7 @@ module.exports = {
           400: '#f85149',
           500: '#da3633',
         },
-        accent: '#58a6ff',
+        accent: 'var(--accent)',
       },
     },
   },

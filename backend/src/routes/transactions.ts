@@ -44,7 +44,7 @@ export async function transactionsRoutes(app: FastifyInstance) {
         assetClass: body.assetClass,
         subtype: body.subtype,
       },
-      update: {},
+      update: { assetClass: body.assetClass, subtype: body.subtype ?? null },
     })
 
     const tx = await prisma.transaction.create({

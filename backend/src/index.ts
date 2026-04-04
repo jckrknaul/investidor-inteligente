@@ -7,6 +7,7 @@ import { dividendsRoutes } from './routes/dividends'
 import { dashboardRoutes } from './routes/dashboard'
 import { walletsRoutes } from './routes/wallets'
 import { quotesRoutes } from './routes/quotes'
+import { performanceRoutes } from './routes/performance'
 import { syncAllWallets } from './services/syncDividends'
 
 const app = Fastify({ logger: true })
@@ -23,6 +24,7 @@ const start = async () => {
   await app.register(dividendsRoutes)
   await app.register(dashboardRoutes)
   await app.register(quotesRoutes)
+  await app.register(performanceRoutes)
 
   app.get('/health', async () => ({ status: 'ok' }))
 

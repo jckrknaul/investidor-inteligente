@@ -40,6 +40,42 @@ export const authApi = {
     api.post('/auth/register', data).then(r => r.data),
   login: (data: { email: string; password: string }) =>
     api.post('/auth/login', data).then(r => r.data),
+  google: (credential: string) =>
+    api.post('/auth/google', { credential }).then(r => r.data),
+}
+
+// Wallets
+export const walletsApi = {
+  list: (userId: string) =>
+    api.get(`/users/${userId}/wallets`).then(r => r.data as { id: string; name: string; createdAt: string }[]),
+  create: (userId: string, name: string) =>
+    api.post(`/users/${userId}/wallets`, { name }).then(r => r.data as { id: string; name: string }),
+  rename: (walletId: string, name: string) =>
+    api.put(`/wallets/${walletId}`, { name }).then(r => r.data as { id: string; name: string }),
+  remove: (walletId: string) =>
+    api.delete(`/wallets/${walletId}`).then(r => r.data),
+}
+
+// Performance
+export const performanceApi = {
+  get: (walletId: string) =>
+    api.get(`/wallets/${walletId}/performance`).then(r => r.data as {
+      kpis: {
+        totalReturnPct: number
+        last12mReturnPct: number
+        lastMonthReturnPct: number
+        totalVsCdi: number
+        last12mVsCdi: number
+        lastMonthVsCdi: number
+      }
+      monthlyTable: {
+        year: number
+        months: (number | null)[]
+        yearTotal: number
+        accumulated: number
+      }[]
+      chartSeries: { label: string; portfolio: number; cdi: number | null; ibov: number | null; ifix: number | null }[]
+    }),
 }
 
 // Dashboard
@@ -68,6 +104,7 @@ export const dividendsApi = {
     api.post(`/wallets/${walletId}/dividends`, data).then(r => r.data),
   remove: (id: string) =>
     api.delete(`/dividends/${id}`).then(r => r.data),
-  sync: (walletId: string) =>
-    api.post(`/wallets/${walletId}/dividends/sync`).then(r => r.data as { inserted: number; tickers: string[] }),
+  sync: (walletId: string, reset = false) =>
+    api.post(`/wallets/${walletId}/dividends/sync`, undefined, { params: reset ? { reset: 'true' } : undefined })
+      .then(r => r.data as { inserted: number; tickers: string[] }),
 }
