@@ -78,10 +78,62 @@ export const performanceApi = {
     }),
 }
 
+// Stock Price History (daily/weekly)
+export const priceHistoryApi = {
+  get: (ticker: string, period: string) =>
+    api.get(`/stocks/${encodeURIComponent(ticker)}/price-history`, { params: { period } })
+      .then(r => r.data as { ticker: string; period: string; interval: string; data: { date: string; close: number; volume: number }[] }),
+}
+
+// Stock Analysis
+export const stockAnalysisApi = {
+  get: (ticker: string) =>
+    api.get(`/stocks/${encodeURIComponent(ticker)}/analysis`).then(r => r.data as {
+      profile: { ticker: string; name: string; cnpj: string | null; foundedYear: number | null; ipoYear: number | null; sector: string | null; industry: string | null; listingSegment: string | null; otherCodes: string[]; description: string | null; website: string | null; employees: number | null; logoUrl: string | null; marketCap: number | null; enterpriseValue: number | null; shareholdersEquity: number | null; totalAssets: number | null; totalCurrentAssets: number | null; netDebt: number | null; grossDebt: number | null; totalCash: number | null; sharesOutstanding: number | null; freeFloat: number | null; totalRevenue: number | null; ebitda: number | null; netIncome: number | null; avgDailyLiquidity: number | null }
+      quote: { price: number; change: number | null; changePct: number | null; volume: number | null; marketCap: number | null; fiftyTwoWeekHigh: number | null; fiftyTwoWeekLow: number | null; previousClose: number | null }
+      rentabilidade: { '1m': number | null; '3m': number | null; '6m': number | null; '12m': number | null; '24m': number | null; '60m': number | null }
+      priceHistory: { date: string; close: number; volume: number }[]
+      fundamentals: Record<string, number | null>
+      fundamentalsHistory: { year: string; pl: number | null; pvp: number | null; lpa: number | null; vpa: number | null; dy: number | null; roe: number | null; roa: number | null; margemLiquida: number | null; margemEbitda: number | null; price: number | null }[]
+      incomeHistory: { year: string; revenue: number | null; netIncome: number | null; grossProfit: number | null; ebitda: number | null; operatingCashflow: number | null; freeCashflow: number | null }[]
+      lpaVsPrice: { year: string; lpa: number | null; price: number | null }[]
+      dividends: { payDate: string | null; exDate: string | null; value: number; type: string }[]
+      dividendsPerYear: { year: string; total: number; dy: number | null }[]
+      payoutByYear: { year: string; payout: number | null }[]
+      comunicados: { date: string; category: string; description: string; url: string }[]
+      comunicadosUrl: string
+    }),
+}
+
+// Ceiling Price
+export const ceilingPriceApi = {
+  get: (walletId: string, params?: { assetClass?: string; ke?: number; g?: number; bazinYield?: number; lynchGrowth?: number }) =>
+    api.get(`/wallets/${walletId}/ceiling-price`, { params }).then(r => r.data as {
+      assets: {
+        ticker: string
+        assetClass: string
+        name: string
+        currentPrice: number
+        dpa: number | null
+        lpa: number | null
+        vpa: number | null
+        formulas: {
+          bazin:  { value: number | null; upside: number | null; valid: boolean; na: boolean }
+          graham: { value: number | null; upside: number | null; valid: boolean; na: boolean }
+          lynch:  { value: number | null; upside: number | null; valid: boolean; na: boolean }
+          gordon: { value: number | null; upside: number | null; valid: boolean; na: boolean }
+        }
+        average: number | null
+        signal: 'BARATO' | 'NEUTRO' | 'CARO' | 'SEM_DADOS'
+      }[]
+      params: { bazinYield: number; ke: number; g: number; lynchGrowth: number; cdiAnnual: number }
+    }),
+}
+
 // Dashboard
 export const dashboardApi = {
-  get: (walletId: string) =>
-    api.get(`/wallets/${walletId}/dashboard`).then(r => r.data),
+  get: (walletId: string, period?: string) =>
+    api.get(`/wallets/${walletId}/dashboard`, { params: period ? { period } : undefined }).then(r => r.data),
 }
 
 // Transactions

@@ -11,25 +11,49 @@ import { formatCurrency, formatPercent } from '@/lib/formatters'
 import { useSession } from '@/lib/store'
 import { RefreshCw } from 'lucide-react'
 
+type Period = 'all' | 'ytd' | '12m' | '24m' | '60m'
+
+const PERIOD_OPTIONS: { value: Period; label: string }[] = [
+  { value: 'all', label: 'Desde o início' },
+  { value: 'ytd', label: 'Ano atual' },
+  { value: '12m', label: '12M' },
+  { value: '24m', label: '2A' },
+  { value: '60m', label: '5A' },
+]
+
 export default function DashboardPage() {
   const { session } = useSession()
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [chartLoading, setChartLoading] = useState(false)
   const [error, setError] = useState('')
+  const [period, setPeriod] = useState<Period>('12m')
 
   const walletId = typeof window !== 'undefined' ? localStorage.getItem('walletId') ?? '' : ''
 
-  const load = async () => {
+  const load = async (p?: Period) => {
     if (!walletId) return
     setLoading(true)
     setError('')
     try {
-      const d = await dashboardApi.get(walletId)
+      const d = await dashboardApi.get(walletId, p ?? period)
       setData(d)
     } catch {
       setError('Erro ao carregar dados. Verifique se o backend está rodando.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const changePeriod = async (p: Period) => {
+    setPeriod(p)
+    if (!walletId) return
+    setChartLoading(true)
+    try {
+      const d = await dashboardApi.get(walletId, p)
+      setData(d)
+    } catch { /* ignore */ } finally {
+      setChartLoading(false)
     }
   }
 
@@ -96,9 +120,25 @@ export default function DashboardPage() {
             <Card className="lg:col-span-2">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-sm font-semibold text-text-primary">Evolução do Patrimônio</h2>
-                <span className="text-xs text-text-muted">12 meses</span>
+                <div className="flex gap-1">
+                  {PERIOD_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => changePeriod(opt.value)}
+                      className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                        period === opt.value
+                          ? 'bg-accent text-white'
+                          : 'text-text-muted hover:text-text-primary bg-bg-secondary'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <EvolutionChart data={data.evolution} />
+              <div className={chartLoading ? 'opacity-50 pointer-events-none' : ''}>
+                <EvolutionChart data={data.evolution} />
+              </div>
             </Card>
 
             <Card>

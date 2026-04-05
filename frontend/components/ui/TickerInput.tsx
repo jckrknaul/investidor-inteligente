@@ -18,6 +18,8 @@ interface TickerInputProps {
   disabled?: boolean
   required?: boolean
   placeholder?: string
+  minChars?: number
+  className?: string
 }
 
 export const isFIIResult = (r: TickerResult) =>
@@ -33,7 +35,7 @@ function filterByClass(results: TickerResult[], assetClass?: string): TickerResu
   }
 }
 
-export function TickerInput({ value, onChange, onSelect, assetClass, disabled, required, placeholder = 'Ex: PETR4' }: TickerInputProps) {
+export function TickerInput({ value, onChange, onSelect, assetClass, disabled, required, placeholder = 'Ex: PETR4', minChars = 1, className }: TickerInputProps) {
   const [query, setQuery] = useState(value)
   const [results, setResults] = useState<TickerResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -59,7 +61,7 @@ export function TickerInput({ value, onChange, onSelect, assetClass, disabled, r
 
   const search = (q: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (!q || q.length < 1) {
+    if (!q || q.length < minChars) {
       setResults([])
       setOpen(false)
       return
@@ -115,7 +117,7 @@ export function TickerInput({ value, onChange, onSelect, assetClass, disabled, r
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
-          className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
+          className={className ?? "w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"}
         />
         {loading && (
           <Loader2 size={14} className="absolute right-3 top-2.5 text-text-muted animate-spin" />

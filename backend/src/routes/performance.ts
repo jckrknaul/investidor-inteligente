@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma'
 import { calcPositions } from '../services/portfolio'
-import { fetchMonthlyHistory, priceAtDate } from '../services/quotes'
+import { fetchMonthlyHistory, priceAtOrBefore } from '../services/quotes'
 
 const BCB_FMT = (d: Date) =>
   `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
@@ -91,8 +91,8 @@ export async function performanceRoutes(app: FastifyInstance) {
 
     // Helper: compute monthly return of an index from its price history
     function indexMonthlyReturn(history: { ts: number; close: number }[], eomTs: number, prevEomTs: number): number | null {
-      const cur = priceAtDate(history, eomTs)
-      const prev = priceAtDate(history, prevEomTs)
+      const cur = priceAtOrBefore(history, eomTs)
+      const prev = priceAtOrBefore(history, prevEomTs)
       if (!cur || !prev || prev === 0) return null
       return ((cur - prev) / prev) * 100
     }
@@ -127,7 +127,7 @@ export async function performanceRoutes(app: FastifyInstance) {
       positions.forEach(pos => {
         if (pos.quantity <= 0) return
         const hist = historyMap.get(pos.ticker) ?? []
-        const price = priceAtDate(hist, eomTs) ?? pos.avgPrice
+        const price = priceAtOrBefore(hist, eomTs) ?? pos.avgPrice
         value += pos.quantity * price
       })
 
@@ -158,7 +158,8 @@ export async function performanceRoutes(app: FastifyInstance) {
 
       const startValue = prev?.value ?? 0
       // Modified Dietz: return = (end - start - flow) / (start + flow * 0.5)
-      const denom = startValue + cur.netFlow * 0.5
+      // When startValue = 0 (first month), use full netFlow as denominator to avoid doubling the return
+      const denom = startValue === 0 ? cur.netFlow : startValue + cur.netFlow * 0.5
       const returnPct = denom > 0 ? ((cur.value - startValue - cur.netFlow) / denom) * 100 : 0
 
       const eomTs = Math.floor(endOfMonth(year, month).getTime() / 1000)

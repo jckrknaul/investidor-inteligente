@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import Link from 'next/link'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { formatCurrency, formatPercent, ASSET_CLASS_LABELS } from '@/lib/formatters'
 import { VariationBadge, AssetClassBadge } from '@/components/ui/Badge'
@@ -31,8 +32,10 @@ function AssetRow({ asset, totalPatrimonio }: { asset: Asset; totalPatrimonio: n
     <tr className="border-t border-border hover:bg-bg-hover transition-colors">
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
-          <AssetLogo ticker={asset.ticker} size={26} />
-          <span className="font-semibold text-text-primary text-sm">{asset.ticker}</span>
+          <Link href={`/stock-analysis?ticker=${asset.ticker}`} className="flex items-center gap-2 group">
+            <AssetLogo ticker={asset.ticker} size={26} />
+            <span className="font-semibold text-text-primary text-sm group-hover:text-accent transition-colors">{asset.ticker}</span>
+          </Link>
           {asset.subtype && (
             <span className="text-xs text-text-muted bg-bg-primary px-1.5 py-0.5 rounded">
               {asset.subtype}

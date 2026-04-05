@@ -2,6 +2,7 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { ASSET_CLASS_COLORS, ASSET_CLASS_LABELS } from '@/lib/formatters'
 import { formatCurrency } from '@/lib/formatters'
+import { useEffect, useState } from 'react'
 
 interface CompositionChartProps {
   data: { assetClass: string; value: number; percentage: number }[]
@@ -20,6 +21,20 @@ const CustomTooltip = ({ active, payload }: any) => {
 }
 
 export function CompositionChart({ data }: CompositionChartProps) {
+  const [strokeColor, setStrokeColor] = useState('#161b22')
+
+  useEffect(() => {
+    const update = () => {
+      const color = getComputedStyle(document.documentElement)
+        .getPropertyValue('--bg-card').trim() || '#161b22'
+      setStrokeColor(color)
+    }
+    update()
+    const observer = new MutationObserver(update)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [])
+
   return (
     <div className="flex items-center gap-4">
       <ResponsiveContainer width={180} height={180}>
@@ -33,7 +48,7 @@ export function CompositionChart({ data }: CompositionChartProps) {
             innerRadius={55}
             outerRadius={85}
             strokeWidth={2}
-            stroke="#161b22"
+            stroke={strokeColor}
           >
             {data.map((entry) => (
               <Cell key={entry.assetClass} fill={ASSET_CLASS_COLORS[entry.assetClass] ?? '#8b949e'} />

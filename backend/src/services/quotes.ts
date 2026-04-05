@@ -149,7 +149,9 @@ export async function fetchMonthlyHistory(ticker: string, fromDate: Date): Promi
     const result = data.chart?.result?.[0]
     if (!result?.timestamp?.length) return []
     const timestamps = result.timestamp!
-    const closes = result.indicators?.adjclose?.[0]?.adjclose ?? result.indicators?.quote?.[0]?.close ?? []
+    // Use raw close (not adjclose) — adjclose applies dividend/split adjustments retroactively
+    // which conflicts with raw transaction prices entered by the user
+    const closes = result.indicators?.quote?.[0]?.close ?? []
     return timestamps
       .map((ts, i) => ({ ts, close: closes[i] ?? 0 }))
       .filter(e => e.close > 0)
@@ -158,12 +160,36 @@ export async function fetchMonthlyHistory(ticker: string, fromDate: Date): Promi
   }
 }
 
+// For daily data: find closest timestamp (used in dashboard)
 export function priceAtDate(history: { ts: number; close: number }[], targetTs: number): number | null {
   if (!history.length) return null
   let best = history[0]
   let minDiff = Math.abs(history[0].ts - targetTs)
   for (const entry of history) {
     const diff = Math.abs(entry.ts - targetTs)
+    if (diff < minDiff) { minDiff = diff; best = entry }
+  }
+  return best.close
+}
+
+// For monthly data: find the close price for a given target year+month.
+// Yahoo Finance monthly candles may be timestamped at start-of-month OR at the
+// first trading day of the following month, so timestamp comparison is unreliable.
+// Strategy: find the candle whose timestamp is closest to the target month's midpoint.
+export function priceAtOrBefore(history: { ts: number; close: number }[], targetTs: number): number | null {
+  if (!history.length) return null
+  const target = new Date(targetTs * 1000)
+  const targetYear = target.getUTCFullYear()
+  const targetMonth = target.getUTCMonth()
+
+  // Target midpoint = 15th of target month
+  const midpoint = Date.UTC(targetYear, targetMonth, 15) / 1000
+
+  // Find the candle whose timestamp is closest to the 15th of the target month
+  let best = history[0]
+  let minDiff = Math.abs(history[0].ts - midpoint)
+  for (const entry of history) {
+    const diff = Math.abs(entry.ts - midpoint)
     if (diff < minDiff) { minDiff = diff; best = entry }
   }
   return best.close
