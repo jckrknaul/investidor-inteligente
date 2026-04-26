@@ -130,6 +130,29 @@ export const ceilingPriceApi = {
     }),
 }
 
+// Market Panorama
+export const marketApi = {
+  panorama: () =>
+    api.get('/market/panorama').then(r => r.data as {
+      highlights: { name: string; symbol: string; price: number | null; change: number | null; changePct: number | null; flag?: string }[]
+      americas: { name: string; symbol: string; price: number | null; change: number | null; changePct: number | null; flag?: string }[]
+      europe: { name: string; symbol: string; price: number | null; change: number | null; changePct: number | null; flag?: string }[]
+      asia: { name: string; symbol: string; price: number | null; change: number | null; changePct: number | null; flag?: string }[]
+    }),
+  portfolioQuotes: (walletId: string) =>
+    api.get(`/market/portfolio-quotes/${walletId}`).then(r => r.data as {
+      ticker: string; name: string; price: number | null; change: number | null; changePct: number | null; assetClass: string
+    }[]),
+  topBrStocks: () =>
+    api.get('/market/top-br-stocks').then(r => r.data as {
+      ticker: string; name: string; price: number; changePct: number; marketCap: number; sector: string; logo: string
+    }[]),
+  treasury: () =>
+    api.get('/market/treasury').then(r => r.data as {
+      tipo: string; vencimento: string; dataBase: string; taxaCompra: number | null; taxaVenda: number | null; puCompra: number | null; puVenda: number | null
+    }[]),
+}
+
 // Dashboard
 export const dashboardApi = {
   get: (walletId: string, period?: string) =>
@@ -146,6 +169,69 @@ export const transactionsApi = {
     api.put(`/transactions/${id}`, data).then(r => r.data),
   remove: (id: string) =>
     api.delete(`/transactions/${id}`).then(r => r.data),
+  removeAllByAsset: (assetId: string) =>
+    api.delete(`/assets/${assetId}/all-transactions`).then(r => r.data),
+}
+
+// Projection
+export type ProjectionData = {
+  patrimonio: string
+  anos: number
+  defaultAporte: string
+  defaultRent: string
+  aporteOverrides: Record<string, number>
+  rentOverrides: Record<string, number>
+}
+
+export const projectionApi = {
+  get: (walletId: string) =>
+    api.get(`/wallets/${walletId}/projection`)
+      .then(r => r.data as ProjectionData & { id: string; walletId: string; updatedAt: string })
+      .catch(err => {
+        if (err?.response?.status === 404) return null
+        throw err
+      }),
+  save: (walletId: string, data: ProjectionData) =>
+    api.put(`/wallets/${walletId}/projection`, data).then(r => r.data),
+}
+
+// Valuation (PEGY)
+export interface StockPegy {
+  ticker: string
+  companyName: string
+  price: number
+  marketCap: number
+  pl: number | null
+  dy: number | null
+  cagrLucros5: number | null
+  crescimentoReal: number | null
+  pegy: number | null
+  pegyAjustado: number | null
+  signalPegy: string | null
+  signalPegyAjustado: string | null
+  roe: number | null
+  roic: number | null
+  margemLiquida: number | null
+  dividaLiquidaEbit: number | null
+  lpa: number | null
+  vpa: number | null
+}
+
+export interface PegyResult {
+  macro: {
+    ipca5yr: number
+    di5yr: number
+    jurosReal: number
+    ipcaByYear: { year: number; value: number }[]
+    selicByYear: { year: number; value: number }[]
+    dataRef: string
+  }
+  stocks: StockPegy[]
+}
+
+export const valuationApi = {
+  pegy: () => api.get('/valuation/pegy').then(r => r.data as PegyResult),
+  refresh: () => api.post('/valuation/pegy/refresh').then(r => r.data as PegyResult),
 }
 
 // Dividends

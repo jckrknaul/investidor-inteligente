@@ -10,6 +10,9 @@ import { quotesRoutes } from './routes/quotes'
 import { performanceRoutes } from './routes/performance'
 import { ceilingPriceRoutes } from './routes/ceilingPrice'
 import { stockAnalysisRoutes } from './routes/stockAnalysis'
+import { marketRoutes } from './routes/market'
+import { projectionRoutes } from './routes/projection'
+import { valuationRoutes } from './routes/valuation'
 import { syncAllWallets } from './services/syncDividends'
 
 const app = Fastify({ logger: true })
@@ -29,6 +32,9 @@ const start = async () => {
   await app.register(performanceRoutes)
   await app.register(ceilingPriceRoutes)
   await app.register(stockAnalysisRoutes)
+  await app.register(marketRoutes)
+  await app.register(projectionRoutes)
+  await app.register(valuationRoutes)
 
   app.get('/health', async () => ({ status: 'ok' }))
 

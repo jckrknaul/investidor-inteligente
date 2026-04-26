@@ -195,6 +195,45 @@ export function priceAtOrBefore(history: { ts: number; close: number }[], target
   return best.close
 }
 
+// ─── Dividend Yield de mercado (BRAPI) ───────────────────────────────────────
+
+export async function fetchDividendYields(tickers: string[]): Promise<Map<string, number>> {
+  const dyMap = new Map<string, number>()
+  if (tickers.length === 0) return dyMap
+  const token = process.env.BRAPI_TOKEN
+  if (!token) return dyMap
+
+  const cutoff = Date.now() - 365 * 24 * 3600 * 1000
+
+  await Promise.all(tickers.map(async (ticker) => {
+    try {
+      const url = `https://brapi.dev/api/quote/${encodeURIComponent(ticker)}?token=${token}&dividends=true`
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) })
+      if (!res.ok) return
+      const data = await res.json() as {
+        results?: {
+          symbol?: string
+          regularMarketPrice?: number
+          dividendsData?: {
+            cashDividends?: { paymentDate?: string; lastDatePrior?: string; rate?: number }[]
+          }
+        }[]
+      }
+      const r = data.results?.[0]
+      if (!r?.symbol || !r.regularMarketPrice) return
+      const divs = r.dividendsData?.cashDividends ?? []
+      const sum12m = divs
+        .filter(d => new Date(d.paymentDate || d.lastDatePrior || '').getTime() >= cutoff)
+        .reduce((s, d) => s + (d.rate ?? 0), 0)
+      if (sum12m > 0) {
+        dyMap.set(r.symbol, (sum12m / r.regularMarketPrice) * 100)
+      }
+    } catch { /* ignora */ }
+  }))
+
+  return dyMap
+}
+
 // ─── Proventos automáticos ────────────────────────────────────────────────────
 
 export type DividendType = 'DIVIDEND' | 'JCP' | 'INCOME' | 'AMORTIZATION' | 'SUBSCRIPTION'
@@ -352,7 +391,39 @@ export async function fetchDividends(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Normaliza segmentos da mfinance para nomes amigáveis
+function normalizeFIISegment(raw: string): string {
+  const s = raw.trim()
+  const map: Record<string, string> = {
+    'Papéis': 'Papel',
+    'Fundo de Fundos': 'FOF',
+    'Fundo de Desenvolvimento': 'Desenvolvimento',
+    'Misto': 'Híbrido',
+    'Shoppings': 'Shoppings',
+    'Lajes Corporativas': 'Lajes Corporativas',
+    'Imóveis Industriais e Logísticos': 'Logística',
+    'Residencial': 'Residencial',
+    'Hospital': 'Hospital',
+    'Hotel': 'Hotel',
+    'Agências': 'Agências',
+    'Educacional': 'Educacional',
+    'Outros': 'Outros',
+  }
+  return map[s] ?? s
+}
+
 export async function fetchFIISegment(ticker: string): Promise<string | null> {
+  // Fonte primária: mfinance (dados confiáveis de segmento)
+  try {
+    const url = `https://mfinance.com.br/api/v1/fiis/${encodeURIComponent(ticker)}`
+    const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(6000) })
+    if (res.ok) {
+      const data = await res.json() as { segment?: string }
+      if (data.segment) return normalizeFIISegment(data.segment)
+    }
+  } catch { /* fallback */ }
+
+  // Fallback: brapi summaryProfile (menos confiável)
   const token = process.env.BRAPI_TOKEN
   if (!token) return null
   try {
@@ -371,12 +442,19 @@ export async function fetchFIISegment(ticker: string): Promise<string | null> {
 
     if (!text) return null
 
-    if (/recebív|papel|cri\b|cra\b/.test(text)) return 'Papel'
-    if (/fundo.de.fundo|fof\b/.test(text))       return 'FOF'
-    if (/desenvolv/.test(text))                   return 'Desenvolvimento'
-    if (/multicategor|híbrido|hibrido/.test(text)) return 'Híbrido'
-    // Tijolo: logística, shopping, lajes, galpão, residencial, agência, hotel, hospital, etc.
-    return 'Tijolo'
+    if (/recebív|papel|papéis|cri\b|cra\b|securities|mortgage|crédit/i.test(text)) return 'Papel'
+    if (/fundo.de.fundo|fof\b/i.test(text))       return 'FOF'
+    if (/desenvolv/i.test(text))                   return 'Desenvolvimento'
+    if (/misto|multicategor|híbrido|hibrido/i.test(text)) return 'Híbrido'
+    if (/logíst|industrial|galpão|galpao/i.test(text)) return 'Logística'
+    if (/shopping|varejo/i.test(text))             return 'Shoppings'
+    if (/laje|corporativ|office/i.test(text))      return 'Lajes Corporativas'
+    if (/residen|moradi/i.test(text))              return 'Residencial'
+    if (/hospital|saúde|saude|health/i.test(text)) return 'Hospital'
+    if (/hotel|hotelari/i.test(text))              return 'Hotel'
+    if (/agência|agencia/i.test(text))             return 'Agências'
+    if (/educac/i.test(text))                      return 'Educacional'
+    return null
   } catch {
     return null
   }
@@ -422,4 +500,62 @@ export async function searchTickers(query: string): Promise<{ ticker: string; na
   } catch {
     return []
   }
+}
+
+// Tesouro Direto — PU de venda (valor atual de mercado) via Tesouro Transparente
+const TREASURY_CSV_URL = 'https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/PressssTD.csv'
+let treasuryPriceCache: { data: Map<string, number>; ts: number } | null = null
+
+export async function fetchTreasuryPrices(tickers: string[]): Promise<Map<string, number>> {
+  const prices = new Map<string, number>()
+  if (tickers.length === 0) return prices
+
+  if (treasuryPriceCache && Date.now() - treasuryPriceCache.ts < 5 * 60 * 1000) {
+    for (const t of tickers) {
+      const p = treasuryPriceCache.data.get(t.toUpperCase())
+      if (p != null) prices.set(t, p)
+    }
+    return prices
+  }
+
+  try {
+    const res = await fetch(TREASURY_CSV_URL, { signal: AbortSignal.timeout(15000) })
+    if (!res.ok) return prices
+    const text = await res.text()
+    const lines = text.split('\n').filter(l => l.trim().length > 0)
+    if (lines.length < 2) return prices
+
+    const rows = lines.slice(1).map(line => {
+      const cols = line.split(';')
+      return {
+        key: `${(cols[0] ?? '').trim()} ${(cols[1] ?? '').trim()}`,
+        dataBase: (cols[2] ?? '').trim(),
+        puVenda: parseFloat((cols[6] ?? '').replace(',', '.')) || null,
+      }
+    })
+
+    const parseDate = (d: string) => { const [dd, mm, yyyy] = d.split('/'); return new Date(`${yyyy}-${mm}-${dd}`).getTime() }
+    let maxTs = 0
+    let maxDate = ''
+    for (const r of rows) {
+      const ts = parseDate(r.dataBase)
+      if (ts > maxTs) { maxTs = ts; maxDate = r.dataBase }
+    }
+
+    const allPrices = new Map<string, number>()
+    for (const r of rows) {
+      if (r.dataBase === maxDate && r.puVenda != null) {
+        allPrices.set(r.key.toUpperCase(), r.puVenda)
+      }
+    }
+
+    treasuryPriceCache = { data: allPrices, ts: Date.now() }
+
+    for (const t of tickers) {
+      const p = allPrices.get(t.toUpperCase())
+      if (p != null) prices.set(t, p)
+    }
+  } catch { /* ignora */ }
+
+  return prices
 }

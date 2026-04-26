@@ -6,7 +6,11 @@ import { Card } from '@/components/ui/Card'
 import { stockAnalysisApi, priceHistoryApi } from '@/lib/api'
 import { TickerInput } from '@/components/ui/TickerInput'
 import { formatCurrency } from '@/lib/formatters'
-import { ExternalLink, TrendingUp, TrendingDown } from 'lucide-react'
+import {
+  ExternalLink, TrendingUp, TrendingDown,
+  Building2, FileText, LayoutGrid, Tag, Target, Settings2,
+  Clock, BarChart3, Users, Coins, DollarSign, Landmark, Wallet,
+} from 'lucide-react'
 import {
   AreaChart, Area,
   Line, BarChart, Bar, ComposedChart,
@@ -144,8 +148,9 @@ function StockAnalysisContent() {
 
   const { quote, profile, rentabilidade, fundamentals, fundamentalsHistory,
     incomeHistory, lpaVsPrice, dividendsPerYear, payoutByYear,
-    dividends, comunicados, comunicadosUrl } = data ?? {}
+    dividends, comunicados, comunicadosUrl, fiiInfo } = data ?? {} as any
 
+  const displayPrice = quote?.price ?? 0
   const changePos = (quote?.changePct ?? 0) >= 0
 
   return (
@@ -192,7 +197,7 @@ function StockAnalysisContent() {
                   )}
                 </div>
                 <div className="flex items-center gap-3 mt-1 flex-wrap">
-                  <span className="text-2xl font-bold text-text-primary">{formatCurrency(quote?.price ?? 0)}</span>
+                  <span className="text-2xl font-bold text-text-primary">{formatCurrency(displayPrice)}</span>
                   <span className={`flex items-center gap-1 text-sm font-semibold ${changePos ? 'text-green-400' : 'text-red-400'}`}>
                     {changePos ? <TrendingUp size={15} /> : <TrendingDown size={15} />}
                     {changePos ? '+' : ''}{fmt(quote?.changePct)}% hoje
@@ -214,6 +219,48 @@ function StockAnalysisContent() {
                 </a>
               )}
             </Card>
+
+            {/* ── KPI Cards FII ── */}
+            {fiiInfo && (
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                <Card>
+                  <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">{ticker} Cotação</p>
+                  <p className="text-2xl font-bold text-text-primary mt-1.5">{formatCurrency(displayPrice)}</p>
+                </Card>
+                <Card>
+                  <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">{ticker} DY (12M)</p>
+                  <p className="text-2xl font-bold text-text-primary mt-1.5">
+                    {fiiInfo.dy != null ? `${fmt(fiiInfo.dy)}%` : '—'}
+                  </p>
+                </Card>
+                <Card>
+                  <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">P/VP</p>
+                  <p className="text-2xl font-bold text-text-primary mt-1.5">
+                    {fiiInfo.pvp != null ? fmt(fiiInfo.pvp) : '—'}
+                  </p>
+                </Card>
+                <Card>
+                  <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">Liquidez Diária</p>
+                  <p className="text-2xl font-bold text-text-primary mt-1.5">
+                    {profile?.avgDailyLiquidity != null
+                      ? `R$ ${(profile.avgDailyLiquidity / 1e6).toFixed(2).replace('.', ',')} M`
+                      : '—'}
+                  </p>
+                </Card>
+                <Card>
+                  <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">Variação (12M)</p>
+                  {(() => {
+                    const val12m = (rentabilidade as any)?.['12m'] ?? null
+                    const pos = val12m != null && val12m >= 0
+                    return (
+                      <p className={`text-2xl font-bold mt-1.5 ${val12m == null ? 'text-text-primary' : pos ? 'text-green-400' : 'text-red-400'}`}>
+                        {val12m != null ? `${fmt(val12m)}% ${pos ? '↑' : '↓'}` : '—'}
+                      </p>
+                    )
+                  })()}
+                </Card>
+              </div>
+            )}
 
             {/* ── Rentabilidade + Gráfico cotação ── */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
@@ -329,8 +376,53 @@ function StockAnalysisContent() {
               </Card>
             </div>
 
-            {/* ── Indicadores Fundamentalistas ── */}
-            {fundamentals && (
+            {/* ── Indicadores Fundamentalistas / Informações FII ── */}
+            {fiiInfo ? (
+              <Card>
+                <h2 className="text-base font-bold text-text-primary uppercase tracking-wide mb-4">
+                  Informações sobre {ticker}
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                  {([
+                    { icon: Building2,   label: 'Nome',                value: fiiInfo.name },
+                    { icon: FileText,    label: 'CNPJ',               value: fiiInfo.cnpj },
+                    { icon: LayoutGrid,  label: 'Segmento',           value: fiiInfo.segment },
+                    { icon: Tag,         label: 'Categoria',          value: fiiInfo.category },
+                    { icon: Target,      label: 'Tipo',               value: fiiInfo.type },
+                    { icon: Settings2,   label: 'Gestão',             value: fiiInfo.management },
+                    { icon: Clock,       label: 'Mandato',            value: fiiInfo.mandate },
+                    { icon: BarChart3,   label: 'Dividend Yield',     value: fiiInfo.dy != null ? `${fmt(fiiInfo.dy)}%` : null },
+                    { icon: DollarSign,  label: 'VPA',                value: fiiInfo.vpa != null ? formatCurrency(fiiInfo.vpa) : null },
+                    { icon: Coins,       label: 'Último Dividendo',   value: fiiInfo.lastDividend != null ? formatCurrency(fiiInfo.lastDividend) : null },
+                    { icon: Landmark,    label: 'P/VP',               value: fiiInfo.pvp != null ? fmt(fiiInfo.pvp) : null },
+                    { icon: Users,       label: 'Número de Cotistas',  value: fiiInfo.totalCotistas != null ? Number(fiiInfo.totalCotistas).toLocaleString('pt-BR') : null },
+                    { icon: Coins,       label: 'Cotas Emitidas',     value: fiiInfo.sharesOutstanding != null ? Number(fiiInfo.sharesOutstanding).toLocaleString('pt-BR') : null },
+                    { icon: Wallet,      label: 'Patrimônio Líquido', value: fiiInfo.equity != null ? (() => {
+                        const v = Number(fiiInfo.equity)
+                        if (Math.abs(v) >= 1e9) return `R$ ${(v / 1e9).toFixed(2).replace('.', ',')} Bilhões`
+                        if (Math.abs(v) >= 1e6) return `R$ ${(v / 1e6).toFixed(2).replace('.', ',')} Milhões`
+                        return formatCurrency(v)
+                      })() : null },
+                    { icon: Landmark,    label: 'Ativos Totais',      value: fiiInfo.totalAssets != null ? (() => {
+                        const v = Number(fiiInfo.totalAssets)
+                        if (Math.abs(v) >= 1e9) return `R$ ${(v / 1e9).toFixed(2).replace('.', ',')} Bilhões`
+                        if (Math.abs(v) >= 1e6) return `R$ ${(v / 1e6).toFixed(2).replace('.', ',')} Milhões`
+                        return formatCurrency(v)
+                      })() : null },
+                  ] as { icon: any; label: string; value: string | null }[])
+                    .filter(item => item.value != null)
+                    .map(item => (
+                      <div key={item.label} className="flex items-center gap-3 py-2 border-b border-border/50">
+                        <item.icon size={16} className="text-accent shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs text-text-muted block">{item.label}</span>
+                          <span className="text-sm font-bold text-text-primary uppercase">{item.value}</span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </Card>
+            ) : fundamentals ? (
               <Card>
                 <h2 className="text-base font-semibold text-text-primary mb-4">Indicadores Fundamentalistas</h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
@@ -351,7 +443,7 @@ function StockAnalysisContent() {
                   <IndCard label="Dívi. Líq/PL" value={fmt(fundamentals.dividaLiquidaPatrimonio)} />
                 </div>
               </Card>
-            )}
+            ) : null}
 
             {/* ── Histórico de Indicadores ── */}
             {fundamentalsHistory && fundamentalsHistory.length > 0 && (
@@ -691,8 +783,8 @@ function StockAnalysisContent() {
               )
             })()}
 
-            {/* Dados e Informações sobre a empresa */}
-            {profile && (() => {
+            {/* Dados e Informações sobre a empresa (oculto para FIIs) */}
+            {profile && !fiiInfo && (() => {
               const fmtBrl = (v: number | null | undefined) => {
                 if (v == null) return null
                 const abs = Math.abs(v)

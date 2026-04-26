@@ -12,6 +12,7 @@
   "dependencies": {
     "@fastify/cors": "^9.0.1",
     "@prisma/client": "^5.14.0",
+    "adm-zip": "^0.5.17",
     "bcryptjs": "^2.4.3",
     "fastify": "^4.28.1",
     "google-auth-library": "^10.6.2",
@@ -19,6 +20,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.14.9",
     "@types/node-cron": "^3.0.11",

@@ -67,6 +67,15 @@ async function fetchBrapiAll(ticker: string, token: string) {
   const histData = (await fetchHistory('10y')) ?? (await fetchHistory('5y')) ?? (await fetchHistory('1y'))
   // Dividendos: range=max para garantir histórico completo; fallback para 5y → 1y
   const divData = (await fetchHistoryWithDiv('max')) ?? (await fetchHistoryWithDiv('5y')) ?? (await fetchHistoryWithDiv('1y'))
+  // Histórico diário (3 meses) para liquidez média
+  let dailyHist: { date: number; close: number; volume: number }[] = []
+  try {
+    const res = await fetch(`${BRAPI}/quote/${ticker}?range=3mo&interval=1d&token=${token}`, { headers: HEADERS, signal: AbortSignal.timeout(10000) })
+    if (res.ok) {
+      const d = await res.json() as any
+      dailyHist = d?.results?.[0]?.historicalDataPrice ?? []
+    }
+  } catch { /* ignore */ }
 
   // Se a resposta com módulos trouxer preço válido, usa ela; caso contrário merge com quote básica
   const quoteWithMods = quoteModData?.results?.[0]
@@ -96,10 +105,112 @@ async function fetchBrapiAll(ticker: string, token: string) {
   return {
     quote,
     priceHistory: (histData?.results?.[0]?.historicalDataPrice ?? []) as { date: number; close: number; volume: number }[],
+    dailyHist,
     dividendsRaw: (divData?.results?.[0]?.dividendsData?.cashDividends ?? []) as {
       paymentDate: string; rate: number; label: string; lastDatePrior: string
     }[],
   }
+}
+
+// ─── Dados de FII via CVM (informe mensal) ──────────────────────────────────
+interface CvmFiiData {
+  totalCotistas: number | null
+  valorAtivo: number | null
+  patrimonioLiquido: number | null
+  cotasEmitidas: number | null
+  vpa: number | null
+}
+
+interface CvmCacheEntry {
+  byCnpj: Map<string, CvmFiiData>   // CNPJ formatado → dados
+  tickerToCnpj: Map<string, string>  // ticker (ex: GARE) → CNPJ formatado
+  fetchedAt: number
+}
+
+let cvmCacheEntry: CvmCacheEntry | null = null
+const CVM_TTL = 1000 * 60 * 60 * 24 // 24h
+
+async function loadCvmCache(): Promise<CvmCacheEntry | null> {
+  if (cvmCacheEntry && Date.now() - cvmCacheEntry.fetchedAt < CVM_TTL) return cvmCacheEntry
+
+  try {
+    const year = new Date().getFullYear()
+    const AdmZip = (await import('adm-zip')).default
+    let compCsv = '', geralCsv = ''
+
+    for (const y of [year, year - 1]) {
+      const url = `https://dados.cvm.gov.br/dados/FII/DOC/INF_MENSAL/DADOS/inf_mensal_fii_${y}.zip`
+      const res = await fetch(url, { signal: AbortSignal.timeout(15000) })
+      if (!res.ok) continue
+      const buf = Buffer.from(await res.arrayBuffer())
+      const zip = new AdmZip(buf)
+      const compEntry = zip.getEntries().find(e => e.entryName.includes('complemento'))
+      const geralEntry = zip.getEntries().find(e => e.entryName.includes('geral'))
+      if (compEntry) compCsv = compEntry.getData().toString('latin1')
+      if (geralEntry) geralCsv = geralEntry.getData().toString('latin1')
+      if (compCsv) break
+    }
+    if (!compCsv) return null
+
+    // Mapa ticker → CNPJ via arquivo geral (ISIN: BR + 4 letras + CTF + 001)
+    const tickerToCnpj = new Map<string, string>()
+    if (geralCsv) {
+      const lines = geralCsv.split('\n')
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(';')
+        if (cols.length < 9) continue
+        const cnpj = cols[1]  // CNPJ formatado
+        const isin = cols[8]  // ex: BRGARECTF001
+        if (isin && isin.startsWith('BR') && cnpj) {
+          const code = isin.slice(2, 6).toUpperCase() // GARE
+          tickerToCnpj.set(code, cnpj)
+        }
+      }
+    }
+
+    // Mapa CNPJ → dados do complemento (guarda registro mais recente por CNPJ)
+    const byCnpj = new Map<string, CvmFiiData>()
+    const lines = compCsv.split('\n')
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(';')
+      if (cols.length < 24) continue
+      byCnpj.set(cols[0], {
+        totalCotistas: cols[4] ? parseInt(cols[4]) : null,
+        valorAtivo: cols[20] ? parseFloat(cols[20]) : null,
+        patrimonioLiquido: cols[21] ? parseFloat(cols[21]) : null,
+        cotasEmitidas: cols[22] ? parseInt(cols[22]) : null,
+        vpa: cols[23] ? parseFloat(cols[23]) : null,
+      })
+    }
+
+    cvmCacheEntry = { byCnpj, tickerToCnpj, fetchedAt: Date.now() }
+    return cvmCacheEntry
+  } catch {
+    return null
+  }
+}
+
+async function fetchCvmFiiData(ticker: string, cnpj: string | null): Promise<(CvmFiiData & { cnpj: string | null }) | null> {
+  const cache = await loadCvmCache()
+  if (!cache) return null
+
+  // Tenta por CNPJ direto
+  if (cnpj) {
+    const clean = cnpj.replace(/[^\d]/g, '')
+    const fmt = clean.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+    const found = cache.byCnpj.get(fmt)
+    if (found) return { ...found, cnpj: fmt }
+  }
+
+  // Fallback: busca pelo ticker (primeiras 4 letras do código) → CNPJ via ISIN
+  const code = ticker.replace(/\d+$/g, '').toUpperCase()
+  const mappedCnpj = cache.tickerToCnpj.get(code)
+  if (mappedCnpj) {
+    const found = cache.byCnpj.get(mappedCnpj)
+    if (found) return { ...found, cnpj: mappedCnpj }
+  }
+
+  return null
 }
 
 // ─── Detalhes da empresa via B3 ──────────────────────────────────────────────
@@ -379,7 +490,7 @@ export async function stockAnalysisRoutes(app: FastifyInstance) {
     const { ticker } = req.params as { ticker: string }
     const token = process.env.BRAPI_TOKEN ?? ''
 
-    const { quote, priceHistory, dividendsRaw } = await fetchBrapiAll(ticker.toUpperCase(), token)
+    const { quote, priceHistory, dailyHist, dividendsRaw } = await fetchBrapiAll(ticker.toUpperCase(), token)
 
     if (!quote || !quote.regularMarketPrice) {
       return reply.code(404).send({ error: 'Ação não encontrada', ticker })
@@ -430,11 +541,18 @@ export async function stockAnalysisRoutes(app: FastifyInstance) {
           .trim() || null
       : null
 
-    // Liquidez média diária (volume * preço)
-    const avgDailyLiquidity: number | null =
-      r.regularMarketVolume && r.regularMarketPrice
-        ? round0(r.regularMarketVolume * r.regularMarketPrice)
-        : null
+    // Liquidez média diária: média de (volume × close) dos últimos 30 pregões
+    const avgDailyLiquidity: number | null = (() => {
+      const last30 = dailyHist.filter(d => d.volume > 0 && d.close > 0).slice(-30)
+      if (last30.length === 0) {
+        // Fallback: volume do último pregão × preço
+        return r.regularMarketVolume && r.regularMarketPrice
+          ? round0(r.regularMarketVolume * r.regularMarketPrice)
+          : null
+      }
+      const sum = last30.reduce((s, d) => s + d.volume * d.close, 0)
+      return round0(sum / last30.length)
+    })()
 
     const profile = {
       ticker: ticker.toUpperCase(),
@@ -470,6 +588,7 @@ export async function stockAnalysisRoutes(app: FastifyInstance) {
 
     // ─── Cotação atual ────────────────────────────────────────────────────────
     const currentPrice = r.regularMarketPrice as number
+    const marketOpen = r.marketState === 'REGULAR'
     const quote_out = {
       price: round2(currentPrice)!,
       change: round2(r.regularMarketChange),
@@ -479,6 +598,7 @@ export async function stockAnalysisRoutes(app: FastifyInstance) {
       fiftyTwoWeekHigh: round2(r.fiftyTwoWeekHigh),
       fiftyTwoWeekLow: round2(r.fiftyTwoWeekLow),
       previousClose: round2(r.regularMarketPreviousClose),
+      marketOpen,
     }
 
     // ─── Rentabilidade por período ────────────────────────────────────────────
@@ -739,6 +859,50 @@ return { year, total: round2(total)!, dy }
       return { year, payout: null as number | null }
     })
 
+    // ─── Informações de FII ─────────────────────────────────────────────────
+    const isFII = /\d{2}$/.test(ticker) && (sp.sectorKey === 'fundos-imobiliarios' || sp.sector === 'Fundos Imobiliários' || sp.industry != null)
+
+    // DY 12M calculado: proventos pagos nos últimos 12 meses / preço atual
+    // BRAPI pode não retornar todos os meses, então extrapola a média mensal × 12
+    const refPrice = currentPrice
+    const twelveMonthsAgo = new Date()
+    twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1)
+    const divs12mList = dividends.filter(d => {
+      const ref = d.payDate ?? d.exDate
+      return ref && new Date(ref) >= twelveMonthsAgo && new Date(ref) <= new Date()
+    })
+    const divs12mSum = divs12mList.reduce((sum, d) => sum + d.value, 0)
+    // Contar meses distintos com dividendos no período
+    const monthsWithDiv = new Set(divs12mList.map(d => (d.payDate ?? d.exDate)!.slice(0, 7))).size
+    // Se temos dados mas menos de 12 meses, extrapola a média mensal
+    const annualizedDiv = monthsWithDiv > 0 && monthsWithDiv < 12
+      ? (divs12mSum / monthsWithDiv) * 12
+      : divs12mSum
+    const dy12m = refPrice > 0 && annualizedDiv > 0
+      ? Math.round((annualizedDiv / refPrice) * 10000) / 100
+      : null
+
+    // Buscar dados CVM para FIIs (cotistas, patrimônio oficial)
+    const cvmData = isFII ? await fetchCvmFiiData(ticker, cnpjFmt) : null
+
+    const fiiInfo = isFII ? {
+      name: r.longName ?? r.shortName ?? null,
+      cnpj: cnpjFmt ?? cvmData?.cnpj ?? null,
+      segment: sp.sectorDisp ?? sp.sector ?? null,
+      category: sp.industryDisp ?? sp.industry ?? null,
+      type: sp.longBusinessSummary?.match(/segmento de ([^,\.]+)/)?.[1] ?? null,
+      management: sp.longBusinessSummary?.match(/gestão ([^,\.]+)/)?.[1] ?? null,
+      mandate: sp.longBusinessSummary?.match(/mandato de ([^,\.e]+)/)?.[1] ?? null,
+      dy: dy12m,
+      pvp: round2(ks.priceToBook) ?? (vpaVal && currentPrice > 0 ? round2(currentPrice / vpaVal) : null),
+      vpa: cvmData?.vpa ?? vpaVal,
+      lastDividend: round2(ks.lastDividendValue) ?? null,
+      sharesOutstanding: cvmData?.cotasEmitidas ?? round0(ks.sharesOutstanding ?? r.sharesOutstanding),
+      equity: cvmData?.patrimonioLiquido ?? round0(equity),
+      totalAssets: cvmData?.valorAtivo ?? round0(totalAssets),
+      totalCotistas: cvmData?.totalCotistas ?? null,
+    } : null
+
     // ─── Comunicados ─────────────────────────────────────────────────────────
     const { items: comunicados, fallbackUrl: comunicadosUrl } = await fetchComunicados(ticker.toUpperCase(), profile.name, profile.cnpj)
 
@@ -749,6 +913,7 @@ return { year, total: round2(total)!, dy }
       priceHistory: priceHistoryOut,
       fundamentals,
       fundamentalsHistory,
+      fiiInfo,
       incomeHistory,
       lpaVsPrice,
       dividends: dividends.slice(0, 50),

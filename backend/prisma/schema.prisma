@@ -27,20 +27,28 @@ model Wallet {
   assets       Asset[]
   transactions Transaction[]
   dividends    Dividend[]
+  projection   Projection?
 }
 
 model Asset {
-  id           String        @id @default(cuid())
-  walletId     String
-  ticker       String
-  name         String        @default("")
-  assetClass   AssetClass
-  subtype      String?
-  sector       String?
-  createdAt    DateTime      @default(now())
-  wallet       Wallet        @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
-  dividends    Dividend[]
+  id             String        @id @default(cuid())
+  walletId       String
+  ticker         String
+  name           String        @default("")
+  assetClass     AssetClass
+  subtype        String?
+  sector         String?
+  // Renda Fixa
+  issuer         String?
+  indexer        String?
+  rate           Decimal?
+  fixedForm      String?
+  dailyLiquidity Boolean?
+  maturityDate   DateTime?
+  createdAt      DateTime      @default(now())
+  wallet         Wallet        @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
+  dividends      Dividend[]
 
   @@unique([walletId, ticker])
 }
@@ -76,6 +84,20 @@ model Dividend {
   asset        Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
   @@unique([assetId, exDate, type])
+}
+
+model Projection {
+  id              String   @id @default(cuid())
+  walletId        String   @unique
+  patrimonio      String
+  anos            Int
+  defaultAporte   String
+  defaultRent     String
+  aporteOverrides Json     @default("{}")
+  rentOverrides   Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  wallet          Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
 }
 
 enum AssetClass {

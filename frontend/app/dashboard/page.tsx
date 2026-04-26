@@ -67,7 +67,7 @@ export default function DashboardPage() {
           <p className="text-text-secondary text-sm mt-0.5">Visão geral dos seus investimentos</p>
         </div>
         <button
-          onClick={load}
+          onClick={() => load()}
           className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary bg-bg-secondary border border-border px-3 py-2 rounded-lg transition-colors"
         >
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
@@ -96,23 +96,39 @@ export default function DashboardPage() {
               subtitleValue={formatCurrency(data.kpis.totalInvestido)}
               change={data.kpis.variacaoPct}
             />
-            <KPICard
-              title="Lucro Total"
-              value={formatCurrency(data.kpis.lucroTotal)}
-            />
+            <Card>
+              <p className="text-xs text-text-secondary uppercase tracking-wide font-medium">Lucro Total</p>
+              <p className={`text-2xl font-bold mt-1.5 ${data.kpis.lucroTotal >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {formatCurrency(data.kpis.lucroTotal)}
+              </p>
+              <div className="flex gap-4 mt-2">
+                <div>
+                  <p className="text-[10px] text-text-muted">Ganho de Capital</p>
+                  <p className="text-xs text-text-secondary font-medium">{formatCurrency(data.kpis.ganhoCapital)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-text-muted">Dividendos Recebidos</p>
+                  <p className="text-xs text-text-secondary font-medium">{formatCurrency(data.kpis.proventosTotal)}</p>
+                </div>
+              </div>
+            </Card>
             <KPICard
               title="Proventos (12M)"
               value={formatCurrency(data.kpis.proventos12M)}
+              subtitle="Total"
+              subtitleValue={formatCurrency(data.kpis.proventosTotal)}
             />
             <KPICard
               title="Variação"
               value={formatCurrency(data.kpis.variacao)}
               change={data.kpis.variacaoPct}
             />
-            <KPICard
-              title="Rentabilidade"
-              value={`${data.kpis.rentabilidade.toFixed(2)}%`}
-            />
+            <Card>
+              <p className="text-xs text-text-secondary uppercase tracking-wide font-medium">Rentabilidade</p>
+              <p className={`text-2xl font-bold mt-1.5 flex items-center gap-1.5 ${data.kpis.rentabilidade >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {data.kpis.rentabilidade >= 0 ? '▲' : '▼'} {Math.abs(data.kpis.rentabilidade).toFixed(2)}%
+              </p>
+            </Card>
           </div>
 
           {/* Charts */}
@@ -162,7 +178,7 @@ export default function DashboardPage() {
               </h2>
             </div>
             {data.totalAssets > 0 ? (
-              <AssetTable groupedAssets={data.groupedAssets} totalPatrimonio={data.kpis.totalPatrimonio} />
+              <AssetTable groupedAssets={data.groupedAssets} totalPatrimonio={data.kpis.totalPatrimonio} onRefresh={() => load()} />
             ) : (
               <div className="flex items-center justify-center h-32 text-text-muted text-sm">
                 Nenhum lançamento registrado ainda.{' '}

@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, ArrowLeftRight, Coins, TrendingUp, Target, BarChart2, LogOut, Sun, Moon } from 'lucide-react'
+import { LayoutDashboard, ArrowLeftRight, Coins, TrendingUp, Target, BarChart2, Globe, Calculator, Scale, LogOut, Sun, Moon } from 'lucide-react'
 import { useSession } from '@/lib/store'
 import { useRouter } from 'next/navigation'
 import { useTheme } from '@/lib/theme'
@@ -10,12 +10,15 @@ import { Logo } from '@/components/ui/Logo'
 import clsx from 'clsx'
 
 const NAV = [
+  { href: '/panorama', icon: Globe, label: 'Panorama' },
   { href: '/dashboard', icon: LayoutDashboard, label: 'Resumo' },
   { href: '/transactions', icon: ArrowLeftRight, label: 'Lançamentos' },
   { href: '/dividends', icon: Coins, label: 'Proventos' },
   { href: '/performance', icon: TrendingUp, label: 'Rentabilidade' },
   { href: '/ceiling-price', icon: Target, label: 'Preço Teto' },
   { href: '/stock-analysis', icon: BarChart2, label: 'Análise' },
+  { href: '/projection', icon: Calculator, label: 'Projeção' },
+  { href: '/valuation', icon: Scale, label: 'Valuation' },
 ]
 
 export function Sidebar() {

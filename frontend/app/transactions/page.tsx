@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { AssetClassBadge } from '@/components/ui/Badge'
 import { AssetLogo } from '@/components/ui/AssetLogo'
 import { TickerInput, isFIIResult } from '@/components/ui/TickerInput'
-import { transactionsApi, quotesApi } from '@/lib/api'
+import { transactionsApi, quotesApi, marketApi } from '@/lib/api'
 import { formatCurrency, formatDate, ASSET_CLASS_LABELS } from '@/lib/formatters'
 import { Plus, Trash2, Pencil, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
@@ -17,6 +17,9 @@ import {
 const ASSET_CLASSES = ['FII', 'STOCK', 'FIXED_INCOME', 'TREASURY', 'CRYPTO'] as const
 const ITEMS_PER_PAGE = 20
 const FII_SUBTYPES = ['Tijolo', 'Papel', 'Híbrido', 'FOF', 'Desenvolvimento']
+const FIXED_INCOME_TYPES = ['CDB', 'LCI', 'LCA', 'LC', 'LF', 'Debênture', 'CRI', 'CRA']
+const FIXED_INCOME_INDEXERS = ['CDI', 'IPCA', 'Prefixado', 'Selic']
+const FIXED_INCOME_FORMS = ['Pós-fixado', 'Prefixado', 'Híbrido']
 
 const EMPTY_FORM = {
   type: 'BUY' as 'BUY' | 'SELL',
@@ -28,6 +31,13 @@ const EMPTY_FORM = {
   unitPrice: '',
   fees: '0',
   notes: '',
+  // Renda Fixa
+  issuer: '',
+  indexer: 'CDI',
+  rate: '',
+  fixedForm: 'Pós-fixado',
+  dailyLiquidity: false,
+  maturityDate: '',
 }
 
 export default function TransactionsPage() {
@@ -46,6 +56,7 @@ export default function TransactionsPage() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   const [walletId, setWalletId] = useState('')
+  const [treasuryBonds, setTreasuryBonds] = useState<{ tipo: string; vencimento: string; puCompra: number | null }[]>([])
   const [chartView, setChartView] = useState<'mensal' | 'anual'>('mensal')
   const [chartClass, setChartClass] = useState('')
   const [chartPeriod, setChartPeriod] = useState<'all' | 'ytd' | '12m' | '2y' | '5y'>('ytd')
@@ -66,6 +77,13 @@ export default function TransactionsPage() {
   }
 
   useEffect(() => { load() }, [walletId])
+
+  // Carrega títulos do Tesouro Direto quando a classe é TREASURY
+  useEffect(() => {
+    if (form.assetClass === 'TREASURY' && open && treasuryBonds.length === 0) {
+      marketApi.treasury().then(setTreasuryBonds).catch(() => {})
+    }
+  }, [form.assetClass, open])
 
   const openNew = () => {
     setEditingId(null)
@@ -102,13 +120,15 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     if (!open || editingId || !form.ticker || form.ticker.length < 3 || !form.date) return
+    if (form.assetClass === 'FIXED_INCOME' || form.assetClass === 'TREASURY') return
     const t = setTimeout(() => fetchPrice(form.ticker, form.date), 400)
     return () => clearTimeout(t)
-  }, [form.ticker, form.date, open])
+  }, [form.ticker, form.date, open, form.assetClass])
 
   // Auto-detecta FII pelo sufixo numérico ao digitar manualmente
   useEffect(() => {
     if (!open || editingId || form.ticker.length < 5) return
+    if (form.assetClass === 'TREASURY') return
     if (/\d{2}$/.test(form.ticker) && form.assetClass !== 'FII') {
       setForm(f => ({ ...f, assetClass: 'FII', subtype: '' }))
     }
@@ -124,6 +144,7 @@ export default function TransactionsPage() {
   const openEdit = (tx: any) => {
     setEditingId(tx.id)
     setForm({
+      ...EMPTY_FORM,
       type: tx.type,
       ticker: tx.asset?.ticker ?? '',
       assetClass: tx.asset?.assetClass ?? 'STOCK',
@@ -153,15 +174,44 @@ export default function TransactionsPage() {
           fees: Number(form.fees),
           notes: form.notes || undefined,
         })
-      } else {
-        const detectedClass = /\d{2}$/.test(form.ticker) ? 'FII' : form.assetClass
+      } else if (form.assetClass === 'FIXED_INCOME') {
+        if (!form.issuer.trim()) throw new Error('Informe o emissor')
+        if (!form.subtype) throw new Error('Selecione o tipo de título')
+        if (!form.maturityDate) throw new Error('Informe a data de vencimento')
+        const value = Number(form.unitPrice || 0)
+        if (!value || value <= 0) throw new Error('Informe o valor investido')
+        const slug = form.issuer.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').slice(0, 20)
+        const dateCompact = form.date.replace(/-/g, '')
+        const uniq = Date.now().toString(36).slice(-5).toUpperCase()
+        const ticker = `${slug}-${form.subtype}-${dateCompact}-${uniq}`
         await transactionsApi.create(walletId, {
-          ...form,
+          type: form.type,
+          ticker,
+          assetClass: 'FIXED_INCOME',
+          subtype: form.subtype,
+          date: form.date,
+          quantity: 1,
+          unitPrice: value,
+          fees: 0,
+          issuer: form.issuer.trim(),
+          indexer: form.indexer || undefined,
+          rate: form.rate ? Number(form.rate) : undefined,
+          fixedForm: form.fixedForm || undefined,
+          dailyLiquidity: form.dailyLiquidity,
+          maturityDate: form.maturityDate,
+        })
+      } else {
+        const detectedClass = (form.assetClass !== 'TREASURY' && /\d{2}$/.test(form.ticker)) ? 'FII' : form.assetClass
+        await transactionsApi.create(walletId, {
+          type: form.type,
+          ticker: form.ticker,
           assetClass: detectedClass,
+          subtype: form.subtype || undefined,
+          date: form.date,
           quantity: Number(form.quantity),
           unitPrice: Number(form.unitPrice),
           fees: Number(form.fees),
-          subtype: form.subtype || undefined,
+          notes: form.notes || undefined,
         })
       }
       setOpen(false)
@@ -170,7 +220,7 @@ export default function TransactionsPage() {
       setCurrentPage(1)
       await load()
     } catch (err: any) {
-      setError(err.response?.data?.message ?? 'Erro ao salvar lançamento')
+      setError(err.response?.data?.message ?? err.message ?? 'Erro ao salvar lançamento')
     } finally {
       setSaving(false)
     }
@@ -183,7 +233,7 @@ export default function TransactionsPage() {
     await load()
   }
 
-  const field = (key: keyof typeof EMPTY_FORM, value: string) =>
+  const field = (key: string, value: string) =>
     setForm(f => ({ ...f, [key]: value }))
 
   // Dados do gráfico Compras x Vendas
@@ -560,115 +610,282 @@ export default function TransactionsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Ticker</label>
-              <TickerInput
-                required
-                value={form.ticker}
-                onChange={v => { field('ticker', v); setPriceMsg(''); lastFetchedRef.current = '' }}
-                onSelect={r => {
-                  const cls = isFIIResult(r) ? 'FII' : r.type === 'cryptocurrency' ? 'CRYPTO' : 'STOCK'
-                  setForm(f => ({ ...f, ticker: r.ticker, assetClass: cls }))
-                }}
-                assetClass={form.assetClass}
-                disabled={!!editingId}
-              />
-            </div>
-            {form.assetClass === 'FII' && (
-              <div>
-                <label className="block text-xs text-text-secondary mb-1">Segmento</label>
-                <select
-                  value={form.subtype}
-                  onChange={e => field('subtype', e.target.value)}
-                  disabled={!!editingId}
-                  className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <option value="">Selecione</option>
-                  {FII_SUBTYPES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
+          {form.assetClass !== 'FIXED_INCOME' && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">
+                    {form.assetClass === 'TREASURY' ? 'Título' : 'Ticker'}
+                  </label>
+                  {form.assetClass === 'TREASURY' ? (
+                    <select
+                      required
+                      value={form.ticker}
+                      onChange={e => {
+                        const val = e.target.value
+                        field('ticker', val)
+                        // Preencher preço unitário com PU Compra do título selecionado
+                        const bond = treasuryBonds.find(b => `${b.tipo} ${b.vencimento}` === val)
+                        if (bond?.puCompra) {
+                          setForm(f => ({ ...f, ticker: val, unitPrice: bond.puCompra!.toFixed(2) }))
+                          userEditedPriceRef.current = false
+                        }
+                      }}
+                      disabled={!!editingId}
+                      className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <option value="">Selecione um título</option>
+                      {treasuryBonds
+                        .sort((a, b) => a.tipo.localeCompare(b.tipo) || a.vencimento.localeCompare(b.vencimento))
+                        .map(b => {
+                          const value = `${b.tipo} ${b.vencimento}`
+                          const year = b.vencimento.split('/').pop() ?? b.vencimento
+                          const label = `${b.tipo} ${year}`
+                          return <option key={value} value={value}>{label}</option>
+                        })
+                      }
+                    </select>
+                  ) : (
+                    <TickerInput
+                      required
+                      value={form.ticker}
+                      onChange={v => { field('ticker', v); setPriceMsg(''); lastFetchedRef.current = '' }}
+                      onSelect={r => {
+                        const cls = isFIIResult(r) ? 'FII' : r.type === 'cryptocurrency' ? 'CRYPTO' : 'STOCK'
+                        setForm(f => ({ ...f, ticker: r.ticker, assetClass: cls }))
+                      }}
+                      assetClass={form.assetClass}
+                      disabled={!!editingId}
+                    />
+                  )}
+                </div>
+                {form.assetClass === 'FII' && (
+                  <div>
+                    <label className="block text-xs text-text-secondary mb-1">Segmento</label>
+                    <select
+                      value={form.subtype}
+                      onChange={e => field('subtype', e.target.value)}
+                      disabled={!!editingId}
+                      className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <option value="">Selecione</option>
+                      {FII_SUBTYPES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Data</label>
-            <input
-              type="date"
-              required
-              value={form.date}
-              onChange={e => field('date', e.target.value)}
-              className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
-            />
-          </div>
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Data</label>
+                <input
+                  type="date"
+                  required
+                  value={form.date}
+                  onChange={e => field('date', e.target.value)}
+                  className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
+                />
+              </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Quantidade</label>
-              <input
-                type="number"
-                required
-                min="0.01"
-                step="0.01"
-                value={form.quantity}
-                onChange={e => field('quantity', e.target.value)}
-                className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Preço Unit. (R$)</label>
-              <input
-                type="number"
-                required
-                min="0.01"
-                step="0.01"
-                value={form.unitPrice}
-                onChange={e => { userEditedPriceRef.current = true; field('unitPrice', e.target.value) }}
-                className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
-              />
-              {priceMsg && (
-                <p className={`text-xs mt-1 ${priceMsg.startsWith('Cotação atual') ? 'text-green-400' : 'text-text-muted'}`}>
-                  {priceMsg}
-                </p>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">Quantidade</label>
+                  <input
+                    type="number"
+                    required
+                    min="0.01"
+                    step="0.01"
+                    value={form.quantity}
+                    onChange={e => field('quantity', e.target.value)}
+                    className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">Preço Unit. (R$)</label>
+                  <input
+                    type="number"
+                    required
+                    min="0.01"
+                    step="0.01"
+                    value={form.unitPrice}
+                    onChange={e => { userEditedPriceRef.current = true; field('unitPrice', e.target.value) }}
+                    className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
+                  />
+                  {priceMsg && (
+                    <p className={`text-xs mt-1 ${priceMsg.startsWith('Cotação atual') ? 'text-green-400' : 'text-text-muted'}`}>
+                      {priceMsg}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">Taxas (R$)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.fees}
+                    onChange={e => field('fees', e.target.value)}
+                    className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
+                  />
+                </div>
+              </div>
+
+              {(Number(form.quantity) > 0 && Number(form.unitPrice) > 0) && (
+                <div className="bg-bg-primary rounded-lg px-4 py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-text-secondary">Total do lançamento</p>
+                    <p className="text-xs text-text-muted mt-0.5">
+                      {form.quantity} × {formatCurrency(Number(form.unitPrice))}
+                      {Number(form.fees) > 0 && ` + ${formatCurrency(Number(form.fees))} taxas`}
+                    </p>
+                  </div>
+                  <p className={`text-xl font-bold ${form.type === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>
+                    {formatCurrency(Number(form.quantity) * Number(form.unitPrice) + Number(form.fees))}
+                  </p>
+                </div>
               )}
-            </div>
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Taxas (R$)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.fees}
-                onChange={e => field('fees', e.target.value)}
-                className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
-              />
-            </div>
-          </div>
 
-          {(Number(form.quantity) > 0 && Number(form.unitPrice) > 0) && (
-            <div className="bg-bg-primary rounded-lg px-4 py-3 flex items-center justify-between">
               <div>
-                <p className="text-xs text-text-secondary">Total do lançamento</p>
-                <p className="text-xs text-text-muted mt-0.5">
-                  {form.quantity} × {formatCurrency(Number(form.unitPrice))}
-                  {Number(form.fees) > 0 && ` + ${formatCurrency(Number(form.fees))} taxas`}
-                </p>
+                <label className="block text-xs text-text-secondary mb-1">Observações</label>
+                <input
+                  value={form.notes}
+                  onChange={e => field('notes', e.target.value)}
+                  className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
+                  placeholder="Opcional"
+                />
               </div>
-              <p className={`text-xl font-bold ${form.type === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>
-                {formatCurrency(Number(form.quantity) * Number(form.unitPrice) + Number(form.fees))}
-              </p>
-            </div>
+            </>
           )}
 
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Observações</label>
-            <input
-              value={form.notes}
-              onChange={e => field('notes', e.target.value)}
-              className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
-              placeholder="Opcional"
-            />
-          </div>
+          {form.assetClass === 'FIXED_INCOME' && !editingId && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">Emissor</label>
+                  <input
+                    required
+                    value={form.issuer}
+                    onChange={e => field('issuer', e.target.value)}
+                    placeholder="Ex: Banco XP"
+                    className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">Tipo de título</label>
+                  <select
+                    required
+                    value={form.subtype}
+                    onChange={e => field('subtype', e.target.value)}
+                    className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
+                  >
+                    <option value="">Selecione</option>
+                    {FIXED_INCOME_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">Indexador</label>
+                  <select
+                    value={form.indexer}
+                    onChange={e => field('indexer', e.target.value)}
+                    className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
+                  >
+                    {FIXED_INCOME_INDEXERS.map(i => <option key={i} value={i}>{i}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">
+                    {form.indexer === 'Prefixado' ? 'Taxa prefixada' : `Taxa do ${form.indexer}`}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.rate}
+                      onChange={e => field('rate', e.target.value)}
+                      placeholder="0,00"
+                      className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 pr-8 text-text-primary text-sm focus:outline-none focus:border-accent"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted text-xs">%</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">
+                    Forma <span className="text-text-muted">(Opcional)</span>
+                  </label>
+                  <select
+                    value={form.fixedForm}
+                    onChange={e => field('fixedForm', e.target.value)}
+                    className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
+                  >
+                    {FIXED_INCOME_FORMS.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">Valor em R$</label>
+                  <input
+                    type="number"
+                    required
+                    min="0.01"
+                    step="0.01"
+                    value={form.unitPrice}
+                    onChange={e => field('unitPrice', e.target.value)}
+                    placeholder="0,00"
+                    className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 items-end">
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">Data da compra</label>
+                  <input
+                    type="date"
+                    required
+                    value={form.date}
+                    onChange={e => field('date', e.target.value)}
+                    className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs text-text-secondary">Data de vencimento</label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <span className="text-xs text-text-secondary font-semibold">Liquidez diária</span>
+                      <button
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, dailyLiquidity: !f.dailyLiquidity }))}
+                        className={`relative w-9 h-5 rounded-full transition-colors ${form.dailyLiquidity ? 'bg-accent' : 'bg-bg-primary border border-border'}`}
+                      >
+                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${form.dailyLiquidity ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                      </button>
+                    </label>
+                  </div>
+                  <input
+                    type="date"
+                    required
+                    value={form.maturityDate}
+                    onChange={e => field('maturityDate', e.target.value)}
+                    className="w-full bg-bg-primary border border-border rounded-lg px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-accent"
+                  />
+                </div>
+              </div>
+
+              {Number(form.unitPrice) > 0 && (
+                <div className="bg-bg-primary rounded-lg px-4 py-3 flex items-center justify-between">
+                  <p className="text-sm text-text-secondary font-semibold">Valor total</p>
+                  <p className={`text-xl font-bold ${form.type === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>
+                    {formatCurrency(Number(form.unitPrice))}
+                  </p>
+                </div>
+              )}
+            </>
+          )}
 
           {error && <p className="text-red-400 text-xs">{error}</p>}
 

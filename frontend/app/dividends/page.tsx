@@ -7,7 +7,7 @@ import { AssetClassBadge } from '@/components/ui/Badge'
 import { dividendsApi } from '@/lib/api'
 import { formatCurrency, formatDate, DIVIDEND_TYPE_LABELS, ASSET_CLASS_LABELS } from '@/lib/formatters'
 import { AssetLogo } from '@/components/ui/AssetLogo'
-import { RefreshCw, TrendingUp, X, Pie as PieIcon, ChevronLeft, ChevronRight } from 'lucide-react'
+import { RefreshCw, TrendingUp, X, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#6366f1']
 const ITEMS_PER_PAGE = 20

@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma'
 import { calcPositions } from '../services/portfolio'
 import { fetchMonthlyHistory, priceAtOrBefore } from '../services/quotes'
+import { fetchCurrentCdiAnnual, fetchCurrentIpcaAnnual, fetchCdiDaily, fetchIpcaMonthly, projectFixedIncomeValue } from '../services/rates'
 
 const BCB_FMT = (d: Date) =>
   `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
@@ -77,15 +78,33 @@ export async function performanceRoutes(app: FastifyInstance) {
     firstDate.setUTCDate(1)
     const now = new Date()
 
-    // Get unique tickers ever held
-    const tickers = [...new Set(transactions.map(tx => tx.asset.ticker))]
+    // Mapa txId → metadados de Renda Fixa (cada lançamento é tratado como posição independente)
+    const fixedIncomeMap = new Map<string, { purchaseDate: Date; indexer: string | null; rate: number | null; principal: number }>()
+    for (const tx of transactions as any[]) {
+      if (tx.asset.assetClass !== 'FIXED_INCOME' || tx.type !== 'BUY') continue
+      fixedIncomeMap.set(tx.id, {
+        purchaseDate: new Date(tx.date),
+        indexer: tx.asset.indexer ?? null,
+        rate: tx.asset.rate !== null && tx.asset.rate !== undefined ? Number(tx.asset.rate) : null,
+        principal: Number(tx.quantity) * Number(tx.unitPrice) + Number(tx.fees),
+      })
+    }
 
-    // Fetch monthly price history for all tickers + CDI + IBOV + IFIX in parallel
-    const [historiesArr, cdiMap, ibovHistory, ifixMap] = await Promise.all([
+    // Get unique tickers ever held (excluindo renda fixa, que não tem cotação)
+    const tickers = [...new Set(
+      transactions.filter(tx => tx.asset.assetClass !== 'FIXED_INCOME').map(tx => tx.asset.ticker)
+    )]
+
+    // Fetch monthly price history for all tickers + CDI + IBOV + IFIX em paralelo
+    const [historiesArr, cdiMap, ibovHistory, ifixMap, cdiAnnual, ipcaAnnual, cdiDaily, ipcaMonthly] = await Promise.all([
       Promise.all(tickers.map(async t => ({ ticker: t, history: await fetchMonthlyHistory(t, firstDate) }))),
       fetchCdiMonthly(firstDate, now),
       fetchMonthlyHistory('^BVSP', firstDate),
       fetchIfixMonthly(firstDate, now),
+      fetchCurrentCdiAnnual(),
+      fetchCurrentIpcaAnnual(),
+      fixedIncomeMap.size ? fetchCdiDaily(firstDate, now) : Promise.resolve([] as { date: string; rate: number }[]),
+      fixedIncomeMap.size ? fetchIpcaMonthly(firstDate, now) : Promise.resolve([] as { ym: string; rate: number }[]),
     ])
     const historyMap = new Map(historiesArr.map(h => [h.ticker, h.history]))
 
@@ -126,10 +145,29 @@ export async function performanceRoutes(app: FastifyInstance) {
       let value = 0
       positions.forEach(pos => {
         if (pos.quantity <= 0) return
+        if (pos.assetClass === 'FIXED_INCOME') return // tratado abaixo por transação
         const hist = historyMap.get(pos.ticker) ?? []
         const price = priceAtOrBefore(hist, eomTs) ?? pos.avgPrice
         value += pos.quantity * price
       })
+
+      // Renda Fixa: cada lançamento é tratado individualmente
+      for (const tx of txsUntil) {
+        if (tx.asset.assetClass !== 'FIXED_INCOME' || tx.type !== 'BUY') continue
+        const fi = fixedIncomeMap.get(tx.id)
+        if (!fi || fi.purchaseDate > eom) continue
+        value += projectFixedIncomeValue({
+          principal: fi.principal,
+          purchaseDate: fi.purchaseDate,
+          indexer: fi.indexer,
+          rate: fi.rate,
+          cdiAnnual,
+          ipcaAnnual,
+          cdiDaily,
+          ipcaMonthly,
+          asOf: eom,
+        })
+      }
 
       // Net flow = buys - sells during this specific month
       const bomStr = `${year}-${String(month + 1).padStart(2, '0')}-01`
