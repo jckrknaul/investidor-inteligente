@@ -1,12 +1,12 @@
 'use client'
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { Card } from '@/components/ui/Card'
 import { marketApi } from '@/lib/api'
 import { useSession } from '@/lib/store'
 import { formatNumber, formatCurrency } from '@/lib/formatters'
 import { AssetLogo } from '@/components/ui/AssetLogo'
+import { investidor10Url } from '@/lib/external'
 import { Globe, RefreshCw, TrendingUp, TrendingDown, Info, ChevronLeft, ChevronRight, Briefcase, Crown, Search, Landmark } from 'lucide-react'
 
 interface Quote {
@@ -274,10 +274,10 @@ function PortfolioTable({ items }: { items: PortfolioQuote[] }) {
                   positive ? 'hover:bg-green-500/5' : 'bg-red-500/[0.03] hover:bg-red-500/[0.08]'
                 }`}>
                   <td className="px-3 py-2.5">
-                    <Link href={`/stock-analysis?ticker=${q.ticker}`} target="_blank" className="flex items-center gap-2 group">
+                    <a href={investidor10Url(q.ticker, q.assetClass)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group">
                       <AssetLogo ticker={q.ticker} size={22} />
                       <span className="text-text-primary font-medium group-hover:text-accent transition-colors">{q.ticker}</span>
-                    </Link>
+                    </a>
                   </td>
                   <td className="px-3 py-2.5 text-right text-text-secondary tabular-nums">
                     {q.price != null ? formatCurrency(q.price) : '–'}
@@ -349,13 +349,13 @@ function TopBrStocksTable({ items }: { items: TopStock[] }) {
                 }`}>
                   <td className="px-3 py-2.5 text-text-muted text-xs">{rank}</td>
                   <td className="px-3 py-2.5">
-                    <Link href={`/stock-analysis?ticker=${s.ticker}`} className="flex items-center gap-2 group">
+                    <a href={investidor10Url(s.ticker)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group">
                       <AssetLogo ticker={s.ticker} size={22} />
                       <div>
                         <span className="text-text-primary font-medium group-hover:text-accent transition-colors">{s.ticker}</span>
                         <span className="text-text-muted text-xs ml-2 hidden lg:inline">{s.name.length > 25 ? s.name.slice(0, 25) + '…' : s.name}</span>
                       </div>
-                    </Link>
+                    </a>
                   </td>
                   <td className="px-3 py-2.5 text-right text-text-secondary tabular-nums">
                     {formatCurrency(s.price)}

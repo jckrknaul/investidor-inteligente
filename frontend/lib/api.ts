@@ -78,58 +78,6 @@ export const performanceApi = {
     }),
 }
 
-// Stock Price History (daily/weekly)
-export const priceHistoryApi = {
-  get: (ticker: string, period: string) =>
-    api.get(`/stocks/${encodeURIComponent(ticker)}/price-history`, { params: { period } })
-      .then(r => r.data as { ticker: string; period: string; interval: string; data: { date: string; close: number; volume: number }[] }),
-}
-
-// Stock Analysis
-export const stockAnalysisApi = {
-  get: (ticker: string) =>
-    api.get(`/stocks/${encodeURIComponent(ticker)}/analysis`).then(r => r.data as {
-      profile: { ticker: string; name: string; cnpj: string | null; foundedYear: number | null; ipoYear: number | null; sector: string | null; industry: string | null; listingSegment: string | null; otherCodes: string[]; description: string | null; website: string | null; employees: number | null; logoUrl: string | null; marketCap: number | null; enterpriseValue: number | null; shareholdersEquity: number | null; totalAssets: number | null; totalCurrentAssets: number | null; netDebt: number | null; grossDebt: number | null; totalCash: number | null; sharesOutstanding: number | null; freeFloat: number | null; totalRevenue: number | null; ebitda: number | null; netIncome: number | null; avgDailyLiquidity: number | null }
-      quote: { price: number; change: number | null; changePct: number | null; volume: number | null; marketCap: number | null; fiftyTwoWeekHigh: number | null; fiftyTwoWeekLow: number | null; previousClose: number | null }
-      rentabilidade: { '1m': number | null; '3m': number | null; '6m': number | null; '12m': number | null; '24m': number | null; '60m': number | null }
-      priceHistory: { date: string; close: number; volume: number }[]
-      fundamentals: Record<string, number | null>
-      fundamentalsHistory: { year: string; pl: number | null; pvp: number | null; lpa: number | null; vpa: number | null; dy: number | null; roe: number | null; roa: number | null; margemLiquida: number | null; margemEbitda: number | null; price: number | null }[]
-      incomeHistory: { year: string; revenue: number | null; netIncome: number | null; grossProfit: number | null; ebitda: number | null; operatingCashflow: number | null; freeCashflow: number | null }[]
-      lpaVsPrice: { year: string; lpa: number | null; price: number | null }[]
-      dividends: { payDate: string | null; exDate: string | null; value: number; type: string }[]
-      dividendsPerYear: { year: string; total: number; dy: number | null }[]
-      payoutByYear: { year: string; payout: number | null }[]
-      comunicados: { date: string; category: string; description: string; url: string }[]
-      comunicadosUrl: string
-    }),
-}
-
-// Ceiling Price
-export const ceilingPriceApi = {
-  get: (walletId: string, params?: { assetClass?: string; ke?: number; g?: number; bazinYield?: number; lynchGrowth?: number }) =>
-    api.get(`/wallets/${walletId}/ceiling-price`, { params }).then(r => r.data as {
-      assets: {
-        ticker: string
-        assetClass: string
-        name: string
-        currentPrice: number
-        dpa: number | null
-        lpa: number | null
-        vpa: number | null
-        formulas: {
-          bazin:  { value: number | null; upside: number | null; valid: boolean; na: boolean }
-          graham: { value: number | null; upside: number | null; valid: boolean; na: boolean }
-          lynch:  { value: number | null; upside: number | null; valid: boolean; na: boolean }
-          gordon: { value: number | null; upside: number | null; valid: boolean; na: boolean }
-        }
-        average: number | null
-        signal: 'BARATO' | 'NEUTRO' | 'CARO' | 'SEM_DADOS'
-      }[]
-      params: { bazinYield: number; ke: number; g: number; lynchGrowth: number; cdiAnnual: number }
-    }),
-}
-
 // Market Panorama
 export const marketApi = {
   panorama: () =>
@@ -232,6 +180,56 @@ export interface PegyResult {
 export const valuationApi = {
   pegy: () => api.get('/valuation/pegy').then(r => r.data as PegyResult),
   refresh: () => api.post('/valuation/pegy/refresh').then(r => r.data as PegyResult),
+}
+
+// Ceiling Price Projection (cadastro Bazin Projetivo)
+export interface CeilingPriceProjectionRow {
+  id: string
+  ticker: string
+  dyEsperado: number
+  margemCrescimento: number
+  payout: number                  // % informado pelo usuário
+  payoutAtual: number | null      // % calculado (DPA/LPA atuais) — referência
+  lucroAnterior: number           // R$ informado pelo usuário
+  lucroLiquidoApi: number | null  // R$ vindo da API — referência
+  cotacaoAtual: number | null
+  dy12m: number | null
+  lpa: number | null
+  dpa: number | null
+  nPapeis: number | null
+  lucroProjetivo: number | null
+  lpaProjetivo: number | null
+  dpaProjetivo: number | null
+  precoTetoProjetivo: number | null
+  upside: number | null
+  signal: 'BARATO' | 'NEUTRO' | 'CARO' | 'SEM_DADOS'
+  createdAt: string
+}
+
+export interface CeilingPriceProjectionFundamentals {
+  ticker: string
+  cotacaoAtual: number | null
+  lpa: number | null
+  dpa: number | null
+  dy12m: number | null
+  payoutAtual: number | null
+  nPapeis: number | null
+  lucroLiquidoAnterior: number | null
+}
+
+export const ceilingPriceProjectionApi = {
+  list: (walletId: string) =>
+    api.get(`/wallets/${walletId}/ceiling-price-projections`)
+      .then(r => r.data as { items: CeilingPriceProjectionRow[] }),
+  fundamentals: (ticker: string) =>
+    api.get(`/ceiling-price-projections/fundamentals/${ticker}`)
+      .then(r => r.data as CeilingPriceProjectionFundamentals),
+  create: (walletId: string, data: { ticker: string; dyEsperado: number; margemCrescimento: number; payout: number; lucroAnterior: number }) =>
+    api.post(`/wallets/${walletId}/ceiling-price-projections`, data).then(r => r.data),
+  update: (walletId: string, id: string, data: { dyEsperado: number; margemCrescimento: number; payout: number; lucroAnterior: number }) =>
+    api.put(`/wallets/${walletId}/ceiling-price-projections/${id}`, data).then(r => r.data),
+  remove: (walletId: string, id: string) =>
+    api.delete(`/wallets/${walletId}/ceiling-price-projections/${id}`).then(r => r.data),
 }
 
 // Dividends

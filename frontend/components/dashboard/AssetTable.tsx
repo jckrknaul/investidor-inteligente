@@ -1,11 +1,11 @@
 'use client'
 import { useState } from 'react'
-import Link from 'next/link'
 import { ChevronDown, ChevronRight, X, Trash2 } from 'lucide-react'
 import { formatCurrency, formatPercent, ASSET_CLASS_LABELS } from '@/lib/formatters'
 import { VariationBadge, AssetClassBadge } from '@/components/ui/Badge'
 import { AssetLogo } from '@/components/ui/AssetLogo'
 import { transactionsApi } from '@/lib/api'
+import { investidor10Url } from '@/lib/external'
 
 interface Asset {
   assetId: string
@@ -228,10 +228,10 @@ function AssetRow({ asset, totalPatrimonio, onSell }: { asset: Asset; totalPatri
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <Link href={`/stock-analysis?ticker=${asset.ticker}`} className="flex items-center gap-2 group/link">
+            <a href={investidor10Url(asset.ticker, asset.assetClass)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group/link">
               <AssetLogo ticker={asset.ticker} size={26} />
               <span className="font-semibold text-text-primary text-sm group-hover/link:text-accent transition-colors">{asset.ticker}</span>
-            </Link>
+            </a>
             {asset.subtype && (
               <span className="text-xs text-text-muted bg-bg-primary px-1.5 py-0.5 rounded">
                 {asset.subtype}

@@ -3,6 +3,7 @@ import { ReactNode, useState, useEffect } from 'react'
 import { SessionContext } from '@/lib/store'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { ThemeProvider } from '@/lib/theme'
+import { SidebarProvider } from '@/lib/sidebar'
 
 interface Session {
   userId: string
@@ -46,9 +47,11 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <ThemeProvider>
-        <SessionContext.Provider value={{ session, setSession, clearSession, switchWallet }}>
-          {children}
-        </SessionContext.Provider>
+        <SidebarProvider>
+          <SessionContext.Provider value={{ session, setSession, clearSession, switchWallet }}>
+            {children}
+          </SessionContext.Provider>
+        </SidebarProvider>
       </ThemeProvider>
     </GoogleOAuthProvider>
   )

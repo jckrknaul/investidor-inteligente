@@ -462,26 +462,62 @@ export async function fetchFIISegment(ticker: string): Promise<string | null> {
 
 export async function searchTickers(query: string): Promise<{ ticker: string; name: string; type: string; sector: string | null }[]> {
   const token = process.env.BRAPI_TOKEN
+  const results = new Map<string, { ticker: string; name: string; type: string; sector: string | null }>()
+
   if (token) {
-    try {
-      const url = `https://brapi.dev/api/quote/list?search=${encodeURIComponent(query)}&token=${token}&limit=10`
-      const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
-      if (res.ok) {
-        const data = await res.json() as {
-          stocks?: { stock: string; name: string; type: string; sector: string | null }[]
-        }
-        const results = (data.stocks ?? []).map(s => ({
-          ticker: s.stock,
-          name: s.name,
-          type: s.type,        // 'stock' | 'fund' | 'bdr'
-          sector: s.sector,
-        }))
-        if (results.length > 0) return results
+    // Em paralelo: busca por nome (rica em metadados) + busca por prefixo de ticker
+    const [byName, byPrefix] = await Promise.allSettled([
+      fetch(`https://brapi.dev/api/quote/list?search=${encodeURIComponent(query)}&token=${token}&limit=10`, { signal: AbortSignal.timeout(5000) })
+        .then(r => r.ok ? r.json() as Promise<{ stocks?: { stock: string; name: string; type: string; sector: string | null }[] }> : null),
+      fetch(`https://brapi.dev/api/available?search=${encodeURIComponent(query)}&token=${token}`, { signal: AbortSignal.timeout(5000) })
+        .then(r => r.ok ? r.json() as Promise<{ stocks?: string[] }> : null),
+    ])
+
+    // Source 1: matches por nome de empresa (já vem com type/sector)
+    if (byName.status === 'fulfilled' && byName.value?.stocks) {
+      for (const s of byName.value.stocks) {
+        results.set(s.stock, { ticker: s.stock, name: s.name, type: s.type, sector: s.sector })
       }
-    } catch { /* fallback */ }
+    }
+
+    // Source 2: matches por prefixo de ticker (VULC → VULC3, VULC3F)
+    // Estes vêm sem metadados; faz uma chamada batched ao /quote para enriquecer
+    if (byPrefix.status === 'fulfilled' && byPrefix.value?.stocks) {
+      const newTickers = byPrefix.value.stocks
+        .filter(t => !results.has(t))
+        .slice(0, 10) // limita para não estourar /quote
+      if (newTickers.length > 0) {
+        try {
+          const enrichRes = await fetch(`https://brapi.dev/api/quote/${newTickers.join(',')}?token=${token}`, { signal: AbortSignal.timeout(6000) })
+          if (enrichRes.ok) {
+            const ed = await enrichRes.json() as {
+              results?: { symbol: string; shortName?: string; longName?: string; quoteType?: string }[]
+            }
+            for (const r of (ed.results ?? [])) {
+              if (!results.has(r.symbol)) {
+                results.set(r.symbol, {
+                  ticker: r.symbol,
+                  name: r.longName ?? r.shortName ?? r.symbol,
+                  type: r.quoteType?.toLowerCase() ?? 'stock',
+                  sector: null,
+                })
+              }
+            }
+          }
+        } catch { /* enrichment failure: fall through with bare tickers */ }
+        // Para tickers que falharam no enriquecimento, devolve com info mínima
+        for (const t of newTickers) {
+          if (!results.has(t)) {
+            results.set(t, { ticker: t, name: t, type: 'stock', sector: null })
+          }
+        }
+      }
+    }
+
+    if (results.size > 0) return Array.from(results.values())
   }
 
-  // Fallback: Yahoo Finance
+  // Fallback: Yahoo Finance (quando brapi não tem token ou falhou)
   try {
     const url = `${YAHOO_URL}/v1/finance/search?q=${encodeURIComponent(query)}&lang=pt-BR&region=BR&quotesCount=10`
     const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(5000) })

@@ -8,8 +8,7 @@ import { dashboardRoutes } from './routes/dashboard'
 import { walletsRoutes } from './routes/wallets'
 import { quotesRoutes } from './routes/quotes'
 import { performanceRoutes } from './routes/performance'
-import { ceilingPriceRoutes } from './routes/ceilingPrice'
-import { stockAnalysisRoutes } from './routes/stockAnalysis'
+import { ceilingPriceProjectionRoutes } from './routes/ceilingPriceProjection'
 import { marketRoutes } from './routes/market'
 import { projectionRoutes } from './routes/projection'
 import { valuationRoutes } from './routes/valuation'
@@ -30,8 +29,7 @@ const start = async () => {
   await app.register(dashboardRoutes)
   await app.register(quotesRoutes)
   await app.register(performanceRoutes)
-  await app.register(ceilingPriceRoutes)
-  await app.register(stockAnalysisRoutes)
+  await app.register(ceilingPriceProjectionRoutes)
   await app.register(marketRoutes)
   await app.register(projectionRoutes)
   await app.register(valuationRoutes)

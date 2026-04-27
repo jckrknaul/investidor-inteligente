@@ -1,10 +1,10 @@
 'use client'
 import { useEffect, useState, useMemo } from 'react'
-import Link from 'next/link'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { Card } from '@/components/ui/Card'
 import { valuationApi, type PegyResult, type StockPegy } from '@/lib/api'
 import { formatCurrency, formatNumber } from '@/lib/formatters'
+import { investidor10Url } from '@/lib/external'
 import {
   Scale, TrendingUp, TrendingDown, Percent, Landmark,
   Search, ArrowUpDown, RefreshCw, Loader2, AlertTriangle,
@@ -374,10 +374,10 @@ export default function ValuationPage() {
                   <tr key={s.ticker} className={`border-b border-border/50 hover:bg-bg-hover transition-colors ${rowBg}`}>
                     <td className="px-3 py-2.5 text-text-muted">{page * PAGE_SIZE + i + 1}</td>
                     <td className="px-3 py-2.5 text-left">
-                      <Link href={`/stock-analysis?ticker=${s.ticker}`} className="group block">
+                      <a href={investidor10Url(s.ticker)} target="_blank" rel="noopener noreferrer" className="group block">
                         <span className="text-text-primary font-bold group-hover:text-accent transition-colors">{s.ticker}</span>
                         <p className="text-[10px] text-text-muted truncate max-w-[150px]">{s.companyName}</p>
-                      </Link>
+                      </a>
                     </td>
                     <td className="px-3 py-2.5 text-right text-text-secondary whitespace-nowrap">
                       {formatCurrency(s.price)}

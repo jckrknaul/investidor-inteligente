@@ -19,15 +19,16 @@ model User {
 }
 
 model Wallet {
-  id           String        @id @default(cuid())
-  userId       String
-  name         String
-  createdAt    DateTime      @default(now())
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  assets       Asset[]
-  transactions Transaction[]
-  dividends    Dividend[]
-  projection   Projection?
+  id                      String                   @id @default(cuid())
+  userId                  String
+  name                    String
+  createdAt               DateTime                 @default(now())
+  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assets                  Asset[]
+  transactions            Transaction[]
+  dividends               Dividend[]
+  projection              Projection?
+  ceilingPriceProjections CeilingPriceProjection[]
 }
 
 model Asset {
@@ -98,6 +99,22 @@ model Projection {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   wallet          Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+}
+
+model CeilingPriceProjection {
+  id                String   @id @default(cuid())
+  walletId          String
+  ticker            String
+  dyEsperado        String   // % anual (ex: "7.00")
+  margemCrescimento String   // % crescimento de lucro (ex: "5.00")
+  payout            String   // % payout esperado (ex: "60.00")
+  lucroAnterior     String   // R$ lucro líquido anterior (ex: "620000000")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  wallet            Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@unique([walletId, ticker])
+  @@index([walletId])
 }
 
 enum AssetClass {
